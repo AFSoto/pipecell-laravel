@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\ReparacionController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -30,12 +31,27 @@ Route::post('/logout', [LoginController::class, 'logout'])
     ->middleware('auth')
     ->name('logout');
 
-// ── 4. Rutas del panel admin (protegidas con auth) ──
-// Todo lo que esté dentro de este grupo requiere estar logueado.
-// Si no estás logueado, Laravel te redirige automáticamente a /login
+
+
+
+// ── 4. Rutas del panel admin (protegidas) ──
 Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
-    // Dashboard temporal — después lo reemplazamos con un controlador real
+
+    // Dashboard
     Route::get('/dashboard', function () {
-    return view('admin.dashboard');
-})->name('dashboard');
+        return view('admin.dashboard');
+    })->name('dashboard');
+
+    // ── Reparaciones ──
+    Route::get('/reparaciones', [ReparacionController::class, 'index'])
+        ->name('reparaciones.index');
+
+    Route::post('/reparaciones', [ReparacionController::class, 'store'])
+        ->name('reparaciones.store');
+
+    Route::patch('/reparaciones/{reparacion}/estado', [ReparacionController::class, 'actualizarEstado'])
+        ->name('reparaciones.actualizarEstado');
+
+    Route::post('/reparaciones/{reparacion}/abono', [ReparacionController::class, 'registrarAbono'])
+        ->name('reparaciones.registrarAbono');
 });
