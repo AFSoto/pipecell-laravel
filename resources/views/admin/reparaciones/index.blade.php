@@ -247,15 +247,20 @@
     data-id="{{ $rep->id }}"
     data-estado="{{ $rep->estado->value }}"
     data-edit="{{ json_encode([
-        'id'                => $rep->id,
-        'nombre_cliente'    => $rep->nombre_cliente,
-        'telefono_cliente'  => $rep->telefono_cliente ?? '',
-        'marca'             => $rep->marca,
-        'modelo'            => $rep->modelo ?? '',
-        'descripcion_falla' => $rep->descripcion_falla ?? '',
-        'valor_total'       => (int) $rep->valor_total,
-        'costo_repuestos'   => (int) $rep->costo_repuestos,
-    ]) }}">
+    'id'                => $rep->id,
+    'nombre_cliente'    => $rep->nombre_cliente,
+    'telefono_cliente'  => $rep->telefono_cliente ?? '',
+    'marca'             => $rep->marca,
+    'modelo'            => $rep->modelo ?? '',
+    'descripcion_falla' => $rep->descripcion_falla ?? '',
+    'valor_total'       => (int) $rep->valor_total,
+    'costo_repuestos'   => (int) $rep->costo_repuestos,
+    'abonos'            => $rep->abonos->map(fn($a) => [
+        'monto'      => (int) $a->monto,
+        'nota'       => $a->nota ?? '',
+        'fecha'      => $a->created_at->format('d/m/Y h:i A'),
+    ])->toArray(),
+]) }}">
 
                     <td class="py-3 px-4 text-gray-400 text-xs">#{{ $rep->id }}</td>
 
@@ -568,6 +573,17 @@
                 </div>
             </div>
 
+            {{-- Abonos --}}
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Abonos registrados</p>
+                <div id="edit-abonos-lista" class="space-y-2">
+                    {{-- Se llena dinámicamente con JS --}}
+                </div>
+                <p id="edit-abonos-vacio" class="hidden text-xs text-gray-400 italic">
+                    Esta reparación no tiene abonos aún.
+                </p>
+            </div>
+
             {{-- Botones --}}
             <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onclick="cerrarModalEditar()"
@@ -667,6 +683,32 @@ function abrirModalEditar(btn) {
     document.getElementById('edit-costo_repuestos').value        = datos.costo_repuestos;
     document.getElementById('edit-costo_repuestos_visual').value = datos.costo_repuestos
         ? datos.costo_repuestos.toLocaleString('es-CO') : '';
+
+    // ── Abonos ──
+    const lista  = document.getElementById('edit-abonos-lista');
+    const vacio  = document.getElementById('edit-abonos-vacio');
+    lista.innerHTML = '';
+
+    if (datos.abonos && datos.abonos.length > 0) {
+        vacio.classList.add('hidden');
+        datos.abonos.forEach(abono => {
+            const item = document.createElement('div');
+            item.className = 'flex items-start justify-between gap-3 bg-gray-50 rounded-xl px-4 py-3';
+            item.innerHTML = `
+                <div>
+                    <p class="text-xs text-gray-400">${abono.fecha}</p>
+                    ${abono.nota
+                        ? `<p class="text-xs text-gray-500 mt-0.5 italic">${abono.nota}</p>`
+                        : ''}
+                </div>
+                <span class="text-sm font-semibold text-green-600 whitespace-nowrap">
+                    $${abono.monto.toLocaleString('es-CO')}
+                </span>`;
+            lista.appendChild(item);
+        });
+    } else {
+        vacio.classList.remove('hidden');
+    }
 
     document.getElementById('edit-errores').classList.add('hidden');
     document.getElementById('edit-errores-lista').innerHTML = '';
