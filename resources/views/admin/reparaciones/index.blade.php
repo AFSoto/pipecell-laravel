@@ -1032,7 +1032,14 @@ function actualizarFilaEdicion(datos) {
                 const nuevoSaldo    = valorTotal - nuevoAbonado;
 
                 celdaAbonado.textContent = '$' + nuevoAbonado.toLocaleString('es-CO');
-                celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
+celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
+
+// Actualizar el saldo en el botón de abono para que el modal lo lea fresco
+const btnAbono = fila.querySelector('button[title="Registrar abono"]');
+if (btnAbono) {
+    const nombreCliente = fila.querySelector('[data-celda="cliente"] p').textContent;
+    btnAbono.setAttribute('onclick', `abrirModalAbono(${reparacionId}, '${nombreCliente}', ${nuevoSaldo})`);
+}
             }
 
             mostrarNotificacion('Abono registrado correctamente');
