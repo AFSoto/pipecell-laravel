@@ -22,31 +22,59 @@ class ReparacionController extends Controller
     ) {}
 
     /**
-     * Lista todas las reparaciones.
+     * Lista las reparaciones con filtros de estado, periodo y búsqueda.
      */
     public function index(Request $request)
     {
+        $estado  = $request->input('estado');
+        $periodo = $request->input('periodo', 'mes');
+        $buscar  = $request->input('buscar');
+        $desde   = $request->input('desde');
+        $hasta   = $request->input('hasta');
+
+        // en_proceso y arreglado siempre tienen pocos registros — sin filtro de fecha
+        $sinFiltroFecha = in_array($estado, ['en_proceso', 'arreglado']);
+
         $query = Reparacion::with(['caja', 'abonos'])
-            ->when($request->estado && $request->estado !== 'todos', fn($q) => $q->where('estado', $request->estado))
-            ->when($request->filled('buscar'), function ($q) use ($request) {
-                $term = $request->buscar;
-                $q->where(function ($sub) use ($term) {
-                    $sub->where('nombre_cliente', 'like', "%{$term}%")
-                        ->orWhere('telefono_cliente', 'like', "%{$term}%")
-                        ->orWhere('marca', 'like', "%{$term}%")
-                        ->orWhere('modelo', 'like', "%{$term}%");
+            ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
+            ->when(! $sinFiltroFecha, function ($q) use ($periodo, $desde, $hasta) {
+                match ($periodo) {
+                    'hoy'          => $q->whereDate('created_at', today()),
+                    'semana'       => $q->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]),
+                    'mes_pasado'   => $q->whereMonth('created_at', now()->subMonth()->month)
+                        ->whereYear('created_at', now()->subMonth()->year),
+                    'trimestre'    => $q->whereBetween('created_at', [now()->subMonths(3)->startOfDay(), now()->endOfDay()]),
+                    'anio'         => $q->whereYear('created_at', now()->year),
+                    'personalizado' => ($desde && $hasta)
+                        ? $q->whereBetween('created_at', [$desde, $hasta . ' 23:59:59'])
+                        : $q->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year),
+                    default        => $q->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year),
+                };
+            })
+            ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('nombre_cliente', 'like', "%{$buscar}%")
+                        ->orWhere('telefono_cliente', 'like', "%{$buscar}%")
+                        ->orWhere('marca', 'like', "%{$buscar}%")
+                        ->orWhere('modelo', 'like', "%{$buscar}%");
                 });
             })
             ->latest();
 
-        $reparaciones = $request->filled('buscar') ? $query->get() : $query->paginate(10);
+        $reparaciones = strlen($buscar ?? '') >= 2 ? $query->get() : $query->paginate(10);
+
+        $contadores = [
+            'en_proceso' => Reparacion::where('estado', 'en_proceso')->count(),
+            'arreglado'  => Reparacion::where('estado', 'arreglado')->count(),
+            'entregado'  => Reparacion::where('estado', 'entregado')->count(),
+        ];
 
         $cajasLibres = Caja::libres()
             ->orderBy('grupo')
             ->orderBy('numero')
             ->get();
 
-        return view('admin.reparaciones.index', compact('reparaciones', 'cajasLibres'));
+        return view('admin.reparaciones.index', compact('reparaciones', 'cajasLibres', 'contadores'));
     }
 
     /**

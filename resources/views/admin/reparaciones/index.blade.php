@@ -44,13 +44,7 @@
     </button>
 </div>
 
-{{-- Tarjetas de resumen --}}
-@php
-    $enProceso = $reparaciones->where('estado', App\Enums\EstadoReparacion::EnProceso)->count();
-    $arregladas = $reparaciones->where('estado', App\Enums\EstadoReparacion::Arreglado)->count();
-    $entregadas = $reparaciones->where('estado', App\Enums\EstadoReparacion::Entregado)->count();
-@endphp
-
+{{-- Tarjetas de resumen — totales reales por estado (no filtrados) --}}
 <div class="grid sm:grid-cols-3 gap-4 mb-6">
     <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
         <div class="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
@@ -59,7 +53,7 @@
             </svg>
         </div>
         <div>
-            <p class="text-2xl font-bold text-gray-900">{{ $enProceso }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ $contadores['en_proceso'] }}</p>
             <p class="text-xs text-gray-500">En proceso</p>
         </div>
     </div>
@@ -70,7 +64,7 @@
             </svg>
         </div>
         <div>
-            <p class="text-2xl font-bold text-gray-900">{{ $arregladas }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ $contadores['arreglado'] }}</p>
             <p class="text-xs text-gray-500">Arreglados</p>
         </div>
     </div>
@@ -81,85 +75,150 @@
             </svg>
         </div>
         <div>
-            <p class="text-2xl font-bold text-gray-900">{{ $entregadas }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ $contadores['entregado'] }}</p>
             <p class="text-xs text-gray-500">Entregados</p>
         </div>
     </div>
 </div>
 
-{{-- Filtros --}}
-<div class="flex flex-col sm:flex-row gap-3 mb-3">
+{{-- ============================== --}}
+{{-- FILTROS — form GET unificado   --}}
+{{-- ============================== --}}
+@php
+    $fEstado  = request('estado');
+    $fPeriodo = request('periodo', 'mes');
+    $fBuscar  = request('buscar');
+    $fDesde   = request('desde');
+    $fHasta   = request('hasta');
 
-    {{-- Buscador (form GET para búsqueda server-side) --}}
-    <form method="GET" action="{{ route('admin.reparaciones.index') }}" class="flex flex-1 gap-2">
-        @if(request('estado') && request('estado') !== 'todos')
-            <input type="hidden" name="estado" value="{{ request('estado') }}">
-        @endif
-        <div class="relative flex-1">
-            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    $sinFiltroFecha  = in_array($fEstado, ['en_proceso', 'arreglado']);
+    $hayFiltrosExtra = $fBuscar
+        || ($fEstado && $fEstado !== 'todos')
+        || (!$sinFiltroFecha && $fPeriodo && $fPeriodo !== 'mes')
+        || $fDesde || $fHasta;
+@endphp
+
+<form method="GET" action="{{ route('admin.reparaciones.index') }}" id="form-filtros">
+    <div class="flex flex-wrap gap-3 mb-3">
+
+        {{-- Select Estado --}}
+        <select name="estado" id="select-estado"
+                class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
+            <option value="todos"      {{ (!$fEstado || $fEstado === 'todos')   ? 'selected' : '' }}>Todos</option>
+            <option value="en_proceso" {{ $fEstado === 'en_proceso'             ? 'selected' : '' }}>En proceso</option>
+            <option value="arreglado"  {{ $fEstado === 'arreglado'              ? 'selected' : '' }}>Arreglados</option>
+            <option value="entregado"  {{ $fEstado === 'entregado'              ? 'selected' : '' }}>Entregados</option>
+        </select>
+
+        {{-- Select Periodo (oculto para en_proceso y arreglado) --}}
+        <div id="periodo-container" class="{{ $sinFiltroFecha ? 'hidden' : '' }}">
+            <select name="periodo" id="select-periodo"
+                    class="h-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
+                <option value="hoy"          {{ $fPeriodo === 'hoy'          ? 'selected' : '' }}>Hoy</option>
+                <option value="semana"        {{ $fPeriodo === 'semana'        ? 'selected' : '' }}>Esta semana</option>
+                <option value="mes"           {{ (!$fPeriodo || $fPeriodo === 'mes') ? 'selected' : '' }}>Este mes</option>
+                <option value="mes_pasado"    {{ $fPeriodo === 'mes_pasado'    ? 'selected' : '' }}>Mes pasado</option>
+                <option value="trimestre"     {{ $fPeriodo === 'trimestre'     ? 'selected' : '' }}>Últimos 3 meses</option>
+                <option value="anio"          {{ $fPeriodo === 'anio'          ? 'selected' : '' }}>Este año</option>
+                <option value="personalizado" {{ $fPeriodo === 'personalizado' ? 'selected' : '' }}>Personalizado</option>
+            </select>
+        </div>
+
+        {{-- Campos desde/hasta (solo para periodo=personalizado) --}}
+        <div id="fechas-personalizado"
+             class="{{ $fPeriodo === 'personalizado' && !$sinFiltroFecha ? 'flex gap-2' : 'hidden' }}">
+            <input type="date" name="desde" value="{{ $fDesde }}"
+                   class="px-3 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+            <input type="date" name="hasta" value="{{ $fHasta }}"
+                   class="px-3 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+        </div>
+
+        {{-- Buscador --}}
+        <div class="flex flex-1 min-w-56 gap-2">
+            <div class="relative flex-1">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+                <input type="text" name="buscar" id="input-buscar" value="{{ $fBuscar }}"
+                       placeholder="Buscar por cliente, teléfono, marca..."
+                       class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+            </div>
+
+            {{-- Botón buscar --}}
+            <button type="submit"
+                    class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-blue-600 transition"
+                    title="Buscar">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                 </svg>
-            </div>
-            <input type="text" name="buscar" value="{{ request('buscar') }}"
-                   placeholder="Buscar por cliente, teléfono, marca o modelo..."
-                   class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+            </button>
+
+            {{-- Botón limpiar búsqueda (X) --}}
+            @if($fBuscar)
+                <button type="button" onclick="limpiarBusqueda()"
+                        class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-500 transition"
+                        title="Limpiar búsqueda">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            @endif
         </div>
-        <button type="submit"
-                class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-blue-600 transition"
-                title="Buscar">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-        </button>
-        @if(request('buscar'))
-            <a href="{{ route('admin.reparaciones.index', array_filter(['estado' => request('estado')])) }}"
-               class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-500 transition"
-               title="Limpiar búsqueda">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+        {{-- Botón limpiar todos los filtros --}}
+        @if($hayFiltrosExtra)
+            <a href="{{ route('admin.reparaciones.index') }}"
+               class="inline-flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition whitespace-nowrap">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
+                Limpiar filtros
             </a>
         @endif
-    </form>
 
-    {{-- Select de estado --}}
-    <select id="filter-estado" onchange="filtrarPorEstado(this.value)"
-            class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
-        <option value="todos" {{ (!request('estado') || request('estado') === 'todos') ? 'selected' : '' }}>Todos</option>
-        <option value="en_proceso" {{ request('estado') === 'en_proceso' ? 'selected' : '' }}>En proceso</option>
-        <option value="arreglado" {{ request('estado') === 'arreglado' ? 'selected' : '' }}>Arreglados</option>
-        <option value="entregado" {{ request('estado') === 'entregado' ? 'selected' : '' }}>Entregados</option>
-    </select>
-</div>
+    </div>
+</form>
 
 {{-- Indicador de filtros activos --}}
-<div class="flex items-center justify-between mb-6 text-sm text-gray-400">
-    <span>
+<div class="flex items-center justify-between mb-6">
+    <p class="text-sm text-gray-500">
         @php
-            $estadoLabel = match(request('estado')) {
+            $estadoLabel = match($fEstado) {
                 'en_proceso' => 'en proceso',
                 'arreglado'  => 'arregladas',
                 'entregado'  => 'entregadas',
                 default      => null,
             };
+
+            $periodoLabel = match($fPeriodo) {
+                'hoy'          => 'de hoy',
+                'semana'       => 'de esta semana',
+                'mes_pasado'   => 'del mes pasado',
+                'trimestre'    => 'de los últimos 3 meses',
+                'anio'         => 'de este año',
+                'personalizado'=> ($fDesde && $fHasta)
+                    ? 'del ' . \Carbon\Carbon::parse($fDesde)->format('d/m/Y') . ' al ' . \Carbon\Carbon::parse($fHasta)->format('d/m/Y')
+                    : 'de este mes',
+                default        => 'de este mes',
+            };
         @endphp
-        @if(request('buscar') && $estadoLabel)
-            Resultados para "<strong class="text-gray-600">{{ request('buscar') }}</strong>" en {{ $estadoLabel }}
-        @elseif(request('buscar'))
-            Resultados para "<strong class="text-gray-600">{{ request('buscar') }}</strong>"
-        @elseif($estadoLabel)
+
+        @if($fBuscar && $estadoLabel)
+            <strong>{{ $reparaciones->count() }}</strong> resultado{{ $reparaciones->count() !== 1 ? 's' : '' }}
+            para "<strong>{{ $fBuscar }}</strong>" en {{ $estadoLabel }}
+        @elseif($fBuscar)
+            <strong>{{ $reparaciones->count() }}</strong> resultado{{ $reparaciones->count() !== 1 ? 's' : '' }}
+            para "<strong>{{ $fBuscar }}</strong>"
+        @elseif($estadoLabel && $sinFiltroFecha)
             Mostrando reparaciones {{ $estadoLabel }}
+        @elseif($estadoLabel)
+            Mostrando reparaciones {{ $estadoLabel }} {{ $periodoLabel }}
         @else
-            Mostrando todas las reparaciones
+            Mostrando todas las reparaciones {{ $periodoLabel }}
         @endif
-    </span>
-    @if(request('buscar') || (request('estado') && request('estado') !== 'todos'))
-        <a href="{{ route('admin.reparaciones.index') }}"
-           class="text-xs text-blue-500 hover:text-blue-700 font-medium transition">
-            Limpiar filtros
-        </a>
-    @endif
+    </p>
 </div>
 
 {{-- Tabla --}}
@@ -631,17 +690,48 @@
     // FILTROS
     // ══════════════════════════════════════
 
+    const formFiltros    = document.getElementById('form-filtros');
+    const selectEstado   = document.getElementById('select-estado');
+    const selectPeriodo  = document.getElementById('select-periodo');
+    const periodoContainer     = document.getElementById('periodo-container');
+    const fechasPersonalizado  = document.getElementById('fechas-personalizado');
+
     /**
-     * Filtro por estado: redirige con parámetro en la URL.
-     * Preserva el buscador activo si había una búsqueda.
+     * Al cambiar el estado:
+     * - Si es en_proceso o arreglado → ocultar el select de periodo y enviar el form
+     * - Para los demás → mostrar periodo y enviar el form
      */
-    function filtrarPorEstado(estado) {
-        const params = new URLSearchParams();
-        if (estado && estado !== 'todos') params.set('estado', estado);
-        const buscar = new URLSearchParams(window.location.search).get('buscar');
-        if (buscar) params.set('buscar', buscar);
-        const qs = params.toString();
-        window.location.href = '{{ route("admin.reparaciones.index") }}' + (qs ? '?' + qs : '');
+    selectEstado.addEventListener('change', function () {
+        const sinFecha = ['en_proceso', 'arreglado'].includes(this.value);
+        periodoContainer.classList.toggle('hidden', sinFecha);
+        if (sinFecha) fechasPersonalizado.classList.add('hidden');
+        formFiltros.submit();
+    });
+
+    /**
+     * Al cambiar el periodo:
+     * - Si es "personalizado" → mostrar campos desde/hasta y NO enviar (esperar fechas)
+     * - Para cualquier otro → ocultar fechas y enviar el form
+     */
+    if (selectPeriodo) {
+        selectPeriodo.addEventListener('change', function () {
+            if (this.value === 'personalizado') {
+                fechasPersonalizado.classList.remove('hidden');
+                fechasPersonalizado.classList.add('flex');
+            } else {
+                fechasPersonalizado.classList.add('hidden');
+                fechasPersonalizado.classList.remove('flex');
+                formFiltros.submit();
+            }
+        });
+    }
+
+    /**
+     * Limpia el campo de búsqueda y envía el form (mantiene otros filtros).
+     */
+    function limpiarBusqueda() {
+        document.getElementById('input-buscar').value = '';
+        formFiltros.submit();
     }
 
     // ══════════════════════════════════════
