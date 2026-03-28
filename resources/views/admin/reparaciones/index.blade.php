@@ -547,13 +547,61 @@
                 // Actualizar contadores sin recargar
                 actualizarContadores(estadoAnterior, nuevoEstado);
 
-                // Feedback visual: quitar el borde después de 1 segundo
-                setTimeout(() => {
-                    select.classList.remove('ring-2', 'ring-green-400');
-                }, 1000);
-
                 // Mostrar notificación flotante
                 mostrarNotificacion('Estado actualizado correctamente');
+
+                // ── Animación de desaparición si hay filtro de estado activo ──
+                //
+                // Leemos el parámetro "estado" de la URL actual.
+                // Si el usuario está filtrado (ej: ?estado=en_proceso) y acaba de
+                // cambiar la fila a otro estado, esa fila ya no pertenece al filtro
+                // activo → la animamos para que desaparezca sin recargar la página.
+                const filtroActivo = new URLSearchParams(window.location.search).get('estado');
+
+                // Solo actuamos si hay un filtro específico Y el nuevo estado es diferente.
+                // Si no hay filtro (null) o es "todos", dejamos la fila como está.
+                const debeDesaparecer = filtroActivo
+                    && filtroActivo !== 'todos'
+                    && filtroActivo !== nuevoEstado;
+
+                if (debeDesaparecer) {
+                    // Fase 1 — fundido: opacity 0 en 300ms
+                    // Usamos style.transition + style.opacity para no depender de clases Tailwind
+                    // que podrían no tener la propiedad transition configurada en este elemento.
+                    fila.style.transition = 'opacity 0.3s ease';
+                    fila.style.opacity    = '0';
+
+                    // Fase 2 — colapso de altura: después de que termine el fundido (300ms)
+                    // colapsamos el alto de la fila para que las filas de abajo suban suavemente
+                    // en lugar de dejar un hueco vacío en la tabla.
+                    setTimeout(() => {
+                        // Guardamos el alto actual para poder animarlo desde ese valor hasta 0
+                        fila.style.height     = fila.offsetHeight + 'px';
+                        fila.style.overflow   = 'hidden';
+
+                        // Forzamos un reflow para que el navegador registre el height fijo
+                        // antes de cambiarlo; sin esto la transición no se dispara.
+                        fila.offsetHeight; // eslint-disable-line no-unused-expressions
+
+                        fila.style.transition = 'height 0.3s ease, padding 0.3s ease';
+                        fila.style.height     = '0';
+                        fila.style.paddingTop = '0';
+                        fila.style.paddingBottom = '0';
+                    }, 300);
+
+                    // Fase 3 — eliminación del DOM: cuando terminaron ambas animaciones (600ms)
+                    // removemos el nodo del DOM para que no ocupe espacio ni quede accesible.
+                    setTimeout(() => {
+                        fila.remove();
+                    }, 620); // 20ms de margen extra sobre los 600ms para evitar flashes
+
+                } else {
+                    // Sin filtro activo o el estado coincide con el filtro:
+                    // solo quitamos el anillo de feedback visual después de 1 segundo
+                    setTimeout(() => {
+                        select.classList.remove('ring-2', 'ring-green-400');
+                    }, 1000);
+                }
 
             } else {
                 // Si falló, revertir el select al valor anterior
