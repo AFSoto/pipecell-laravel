@@ -26,19 +26,20 @@ class ReparacionController extends Controller
      */
     public function index(Request $request)
     {
-
-        $reparaciones = Reparacion::with(['caja', 'abonos'])
-            ->when($request->estado && $request->estado !== 'todos', function ($query) use ($request) {
-                // Filtra por el estado que viene en la URL
-                return $query->where('estado', $request->estado);
+        $query = Reparacion::with(['caja', 'abonos'])
+            ->when($request->estado && $request->estado !== 'todos', fn($q) => $q->where('estado', $request->estado))
+            ->when($request->filled('buscar'), function ($q) use ($request) {
+                $term = $request->buscar;
+                $q->where(function ($sub) use ($term) {
+                    $sub->where('nombre_cliente', 'like', "%{$term}%")
+                        ->orWhere('telefono_cliente', 'like', "%{$term}%")
+                        ->orWhere('marca', 'like', "%{$term}%")
+                        ->orWhere('modelo', 'like', "%{$term}%");
+                });
             })
-            ->when(!$request->estado, function ($query) {
-                // Sin filtro: muestra en proceso por defecto
-                return $query->where('estado', 'en_proceso');
-            })
-            ->latest()
-            ->paginate(10);
+            ->latest();
 
+        $reparaciones = $request->filled('buscar') ? $query->get() : $query->paginate(10);
 
         $cajasLibres = Caja::libres()
             ->orderBy('grupo')

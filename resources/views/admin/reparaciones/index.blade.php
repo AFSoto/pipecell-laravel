@@ -88,24 +88,78 @@
 </div>
 
 {{-- Filtros --}}
-<div class="flex flex-col sm:flex-row gap-3 mb-6">
-    <div class="relative flex-1">
-        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div class="flex flex-col sm:flex-row gap-3 mb-3">
+
+    {{-- Buscador (form GET para búsqueda server-side) --}}
+    <form method="GET" action="{{ route('admin.reparaciones.index') }}" class="flex flex-1 gap-2">
+        @if(request('estado') && request('estado') !== 'todos')
+            <input type="hidden" name="estado" value="{{ request('estado') }}">
+        @endif
+        <div class="relative flex-1">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </div>
+            <input type="text" name="buscar" value="{{ request('buscar') }}"
+                   placeholder="Buscar por cliente, teléfono, marca o modelo..."
+                   class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+        </div>
+        <button type="submit"
+                class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-blue-600 transition"
+                title="Buscar">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-        </div>
-        <input type="text" id="search-input" placeholder="Buscar por cliente, marca o caja..."
-               class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
-    </div>
+        </button>
+        @if(request('buscar'))
+            <a href="{{ route('admin.reparaciones.index', array_filter(['estado' => request('estado')])) }}"
+               class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-500 transition"
+               title="Limpiar búsqueda">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </a>
+        @endif
+    </form>
+
+    {{-- Select de estado --}}
     <select id="filter-estado" onchange="filtrarPorEstado(this.value)"
-        class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
-    <option value="" {{ !request('estado') ? 'selected' : '' }}>En proceso</option>
-    <option value="todos" {{ request('estado') === 'todos' ? 'selected' : '' }}>Todos</option>
-    <option value="en_proceso" {{ request('estado') === 'en_proceso' ? 'selected' : '' }}>En proceso</option>
-    <option value="arreglado" {{ request('estado') === 'arreglado' ? 'selected' : '' }}>Arreglados</option>
-    <option value="entregado" {{ request('estado') === 'entregado' ? 'selected' : '' }}>Entregados</option>
-</select>
+            class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
+        <option value="todos" {{ (!request('estado') || request('estado') === 'todos') ? 'selected' : '' }}>Todos</option>
+        <option value="en_proceso" {{ request('estado') === 'en_proceso' ? 'selected' : '' }}>En proceso</option>
+        <option value="arreglado" {{ request('estado') === 'arreglado' ? 'selected' : '' }}>Arreglados</option>
+        <option value="entregado" {{ request('estado') === 'entregado' ? 'selected' : '' }}>Entregados</option>
+    </select>
+</div>
+
+{{-- Indicador de filtros activos --}}
+<div class="flex items-center justify-between mb-6 text-sm text-gray-400">
+    <span>
+        @php
+            $estadoLabel = match(request('estado')) {
+                'en_proceso' => 'en proceso',
+                'arreglado'  => 'arregladas',
+                'entregado'  => 'entregadas',
+                default      => null,
+            };
+        @endphp
+        @if(request('buscar') && $estadoLabel)
+            Resultados para "<strong class="text-gray-600">{{ request('buscar') }}</strong>" en {{ $estadoLabel }}
+        @elseif(request('buscar'))
+            Resultados para "<strong class="text-gray-600">{{ request('buscar') }}</strong>"
+        @elseif($estadoLabel)
+            Mostrando reparaciones {{ $estadoLabel }}
+        @else
+            Mostrando todas las reparaciones
+        @endif
+    </span>
+    @if(request('buscar') || (request('estado') && request('estado') !== 'todos'))
+        <a href="{{ route('admin.reparaciones.index') }}"
+           class="text-xs text-blue-500 hover:text-blue-700 font-medium transition">
+            Limpiar filtros
+        </a>
+    @endif
 </div>
 
 {{-- Tabla --}}
@@ -203,9 +257,9 @@
     </div>
     @endif
 </div>
-{{-- Paginación --}}
-@if($reparaciones->hasPages())
-<div class="mt-6">
+{{-- Paginación (solo cuando hay más de una página y no hay búsqueda por texto) --}}
+@if(!request('buscar') && method_exists($reparaciones, 'hasPages') && $reparaciones->hasPages())
+<div class="mt-6 flex justify-center">
     {{ $reparaciones->appends(request()->query())->links() }}
 </div>
 @endif
@@ -576,36 +630,19 @@
     // ══════════════════════════════════════
     // FILTROS
     // ══════════════════════════════════════
-    // ══════════════════════════════════════
-    // FILTROS
-    // ══════════════════════════════════════
 
     /**
      * Filtro por estado: redirige con parámetro en la URL.
-     * El servidor filtra y pagina los resultados.
+     * Preserva el buscador activo si había una búsqueda.
      */
     function filtrarPorEstado(estado) {
-        if (estado === '' || estado === 'en_proceso') {
-            window.location.href = '{{ route("admin.reparaciones.index") }}';
-        } else if (estado === 'todos') {
-            window.location.href = '{{ route("admin.reparaciones.index") }}?estado=todos';
-        } else {
-            window.location.href = '{{ route("admin.reparaciones.index") }}?estado=' + estado;
-        }
+        const params = new URLSearchParams();
+        if (estado && estado !== 'todos') params.set('estado', estado);
+        const buscar = new URLSearchParams(window.location.search).get('buscar');
+        if (buscar) params.set('buscar', buscar);
+        const qs = params.toString();
+        window.location.href = '{{ route("admin.reparaciones.index") }}' + (qs ? '?' + qs : '');
     }
-
-    /**
-     * Filtro por texto: busca en la tabla actual (client-side).
-     */
-    document.getElementById('search-input').addEventListener('input', function() {
-        const texto = this.value.toLowerCase();
-        const filas = document.querySelectorAll('.reparacion-row');
-
-        filas.forEach(fila => {
-            const matchTexto = fila.dataset.search.includes(texto);
-            fila.style.display = matchTexto ? '' : 'none';
-        });
-    });
 
     // ══════════════════════════════════════
     // AUTO-OCULTAR ALERTAS
