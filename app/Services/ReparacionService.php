@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\EstadoCaja;
+use App\Enums\EstadoReparacion;
 use App\Models\Abono;
 use App\Models\Caja;
 use App\Models\Reparacion;
-use App\Enums\EstadoReparacion;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,6 +29,27 @@ class ReparacionService
     {
         return DB::transaction(function () use ($datos) {
 
+            // ── 0. Segunda línea de defensa contra condiciones de carrera ──
+            //
+            // lockForUpdate() bloquea la fila de esta caja en la base de datos
+            // mientras dure la transacción. Si dos peticiones llegan al mismo
+            // tiempo, la segunda esperará a que la primera termine antes de leer
+            // el estado de la caja. Así se garantiza que solo una puede ocuparla.
+            //
+            // Esto complementa la validación del FormRequest: el Request valida
+            // antes de entrar aquí, pero entre esa validación y este punto podría
+            // haber pasado otra petición. lockForUpdate() cierra esa ventana.
+            $caja = Caja::lockForUpdate()->findOrFail($datos['caja_id']);
+
+            // Verificamos el estado dentro de la transacción bloqueada.
+            // Si no está libre, lanzamos una excepción que deshace la transacción
+            // y el controlador la convierte en mensaje de error para el usuario.
+            if ($caja->estado !== EstadoCaja::Libre) {
+                throw new \RuntimeException(
+                    "La caja {$caja->nombre_display} ya está ocupada. Por favor, selecciona otra."
+                );
+            }
+
             // ── 1. Crear la reparación ──
             $reparacion = Reparacion::create([
                 'nombre_cliente'    => $datos['nombre_cliente'],
@@ -42,7 +64,7 @@ class ReparacionService
             ]);
 
             // ── 2. Ocupar la caja ──
-            $caja = Caja::findOrFail($datos['caja_id']);
+            // Reutilizamos la instancia ya cargada y bloqueada del paso 0
             $caja->ocupar();
 
             // ── 3. Registrar abono inicial (si pagó algo) ──

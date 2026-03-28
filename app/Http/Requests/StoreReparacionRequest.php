@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\EstadoCaja;
+use App\Models\Caja;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -25,7 +27,30 @@ class StoreReparacionRequest extends FormRequest
             'telefono_cliente'  => ['nullable', 'string', 'max:20'],
 
             // ── Reparación ──
-            'caja_id'           => ['required', 'exists:cajas,id'],
+            'caja_id' => [
+                'required',
+                // Verifica que el ID exista en la tabla cajas
+                'exists:cajas,id',
+                // Regla personalizada: verifica que la caja esté libre al momento de guardar.
+                // Esto atrapa el caso donde el usuario ya tenía el formulario abierto
+                // pero otra persona ocupó la caja antes de que él enviara el formulario.
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    // Buscamos la caja. findOrFail no aplica aquí porque
+                    // la regla 'exists' anterior ya garantiza que existe;
+                    // usamos find y verificamos null por si acaso.
+                    $caja = Caja::find($value);
+
+                    // Si por alguna razón no se encontró, dejamos que 'exists' maneje el error
+                    if (! $caja) {
+                        return;
+                    }
+
+                    // Si el estado de la caja NO es 'libre', rechazamos la solicitud
+                    if ($caja->estado !== EstadoCaja::Libre) {
+                        $fail('La caja seleccionada ya está ocupada. Selecciona otra.');
+                    }
+                },
+            ],
             'marca'             => ['required', 'string', 'max:50'],
             'modelo'            => ['nullable', 'string', 'max:50'],
             'descripcion_falla' => ['nullable', 'string'],

@@ -230,6 +230,7 @@
             <thead>
                 <tr class="bg-gray-50/50 border-b border-gray-100">
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">ID</th>
+                    <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Fecha</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cliente</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Equipo</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Caja</th>
@@ -247,6 +248,11 @@
                     data-search="{{ strtolower($rep->nombre_cliente . ' ' . $rep->marca . ' ' . $rep->modelo . ' ' . $rep->caja->nombre_display) }}">
 
                     <td class="py-3 px-4 text-gray-400 text-xs">#{{ $rep->id }}</td>
+
+                    <td class="py-3 px-4 whitespace-nowrap">
+                        <p class="text-gray-700 text-xs">{{ $rep->created_at->format('d/m/Y') }}</p>
+                        <p class="text-gray-400 text-xs">{{ $rep->created_at->format('h:i A') }}</p>
+                    </td>
 
                     <td class="py-3 px-4">
                         <p class="font-medium text-gray-900">{{ $rep->nombre_cliente }}</p>
