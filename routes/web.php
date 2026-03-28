@@ -54,4 +54,13 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
 
     Route::post('/reparaciones/{reparacion}/abono', [ReparacionController::class, 'registrarAbono'])
         ->name('reparaciones.registrarAbono');
+
+    // ── Edición de reparación ──
+    // GET  → muestra el formulario con los datos actuales pre-llenados
+    // PUT  → recibe el formulario y persiste los cambios
+    Route::get('/reparaciones/{reparacion}/editar', [ReparacionController::class, 'edit'])
+        ->name('reparaciones.edit');
+
+    Route::put('/reparaciones/{reparacion}', [ReparacionController::class, 'update'])
+        ->name('reparaciones.update');
 });

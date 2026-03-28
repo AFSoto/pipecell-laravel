@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReparacionRequest;
+use App\Http\Requests\UpdateReparacionRequest;
 use App\Models\Caja;
 use App\Models\Reparacion;
 use App\Services\ReparacionService;
@@ -75,6 +76,47 @@ class ReparacionController extends Controller
             ->get();
 
         return view('admin.reparaciones.index', compact('reparaciones', 'cajasLibres', 'contadores'));
+    }
+
+    /**
+     * Muestra el formulario de edición de una reparación existente.
+     *
+     * Route Model Binding: Laravel resuelve automáticamente la reparación
+     * por el segmento {reparacion} de la URL. Si no existe, devuelve 404.
+     */
+    public function edit(Reparacion $reparacion)
+    {
+        // Cargamos las relaciones necesarias para la vista:
+        // - caja  → para mostrar en qué caja está guardado el equipo (solo lectura)
+        // - abonos → para que funcionen los accessors total_abonado y saldo_pendiente
+        $reparacion->load(['caja', 'abonos']);
+
+        return view('admin.reparaciones.edit', compact('reparacion'));
+    }
+
+    /**
+     * Persiste los cambios de una reparación existente.
+     *
+     * UpdateReparacionRequest valida los datos antes de entrar aquí.
+     * Solo los campos declarados en sus rules() pueden actualizarse,
+     * lo que protege contra edición accidental de caja_id o estado.
+     */
+    public function update(UpdateReparacionRequest $request, Reparacion $reparacion)
+    {
+        try {
+            // validated() devuelve únicamente los campos que pasaron las reglas,
+            // garantizando que caja_id, estado y fecha_entrega no sean modificados.
+            $reparacion->update($request->validated());
+
+            return redirect()
+                ->route('admin.reparaciones.index')
+                ->with('success', "Reparación #{$reparacion->id} actualizada con éxito.");
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Error al actualizar la reparación: ' . $e->getMessage());
+        }
     }
 
     /**

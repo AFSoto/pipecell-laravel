@@ -297,13 +297,24 @@
                     </td>
 
                     <td class="py-3 px-4">
-                        <button onclick="abrirModalAbono({{ $rep->id }}, '{{ $rep->nombre_cliente }}', {{ $rep->saldo_pendiente }})"
-                                class="text-blue-600 hover:text-blue-800 text-xs font-medium transition"
-                                title="Registrar abono">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </button>
+                        <div class="flex items-center gap-2">
+                            {{-- Botón editar --}}
+                            <a href="{{ route('admin.reparaciones.edit', $rep) }}"
+                               class="text-gray-400 hover:text-blue-600 transition"
+                               title="Editar reparación">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </a>
+                            {{-- Botón registrar abono --}}
+                            <button onclick="abrirModalAbono({{ $rep->id }}, '{{ $rep->nombre_cliente }}', {{ $rep->saldo_pendiente }})"
+                                    class="text-blue-600 hover:text-blue-800 transition"
+                                    title="Registrar abono">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 @endforeach
