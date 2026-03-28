@@ -36,7 +36,7 @@
         <p class="text-gray-500 mt-1">Gestiona las reparaciones del local</p>
     </div>
     <button onclick="document.getElementById('modal-nueva').classList.remove('hidden')"
-            class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition shadow-sm shadow-blue-600/20">
+            class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition shadow-sm shadow-blue-600/20 ">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
@@ -98,13 +98,14 @@
         <input type="text" id="search-input" placeholder="Buscar por cliente, marca o caja..."
                class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
     </div>
-    <select id="filter-estado"
-            class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-        <option value="todos">Todos los estados</option>
-        <option value="en_proceso">En proceso</option>
-        <option value="arreglado">Arreglados</option>
-        <option value="entregado">Entregados</option>
-    </select>
+    <select id="filter-estado" onchange="filtrarPorEstado(this.value)"
+        class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
+    <option value="" {{ !request('estado') ? 'selected' : '' }}>En proceso</option>
+    <option value="todos" {{ request('estado') === 'todos' ? 'selected' : '' }}>Todos</option>
+    <option value="en_proceso" {{ request('estado') === 'en_proceso' ? 'selected' : '' }}>En proceso</option>
+    <option value="arreglado" {{ request('estado') === 'arreglado' ? 'selected' : '' }}>Arreglados</option>
+    <option value="entregado" {{ request('estado') === 'entregado' ? 'selected' : '' }}>Entregados</option>
+</select>
 </div>
 
 {{-- Tabla --}}
@@ -202,6 +203,12 @@
     </div>
     @endif
 </div>
+{{-- Paginación --}}
+@if($reparaciones->hasPages())
+<div class="mt-6">
+    {{ $reparaciones->appends(request()->query())->links() }}
+</div>
+@endif
 
 {{-- ============================== --}}
 {{-- MODAL - Nueva Reparación        --}}
@@ -569,20 +576,36 @@
     // ══════════════════════════════════════
     // FILTROS
     // ══════════════════════════════════════
-    document.getElementById('search-input').addEventListener('input', filtrarTabla);
-    document.getElementById('filter-estado').addEventListener('change', filtrarTabla);
+    // ══════════════════════════════════════
+    // FILTROS
+    // ══════════════════════════════════════
 
-    function filtrarTabla() {
-        const texto = document.getElementById('search-input').value.toLowerCase();
-        const estado = document.getElementById('filter-estado').value;
+    /**
+     * Filtro por estado: redirige con parámetro en la URL.
+     * El servidor filtra y pagina los resultados.
+     */
+    function filtrarPorEstado(estado) {
+        if (estado === '' || estado === 'en_proceso') {
+            window.location.href = '{{ route("admin.reparaciones.index") }}';
+        } else if (estado === 'todos') {
+            window.location.href = '{{ route("admin.reparaciones.index") }}?estado=todos';
+        } else {
+            window.location.href = '{{ route("admin.reparaciones.index") }}?estado=' + estado;
+        }
+    }
+
+    /**
+     * Filtro por texto: busca en la tabla actual (client-side).
+     */
+    document.getElementById('search-input').addEventListener('input', function() {
+        const texto = this.value.toLowerCase();
         const filas = document.querySelectorAll('.reparacion-row');
 
         filas.forEach(fila => {
             const matchTexto = fila.dataset.search.includes(texto);
-            const matchEstado = estado === 'todos' || fila.dataset.estado === estado;
-            fila.style.display = (matchTexto && matchEstado) ? '' : 'none';
+            fila.style.display = matchTexto ? '' : 'none';
         });
-    }
+    });
 
     // ══════════════════════════════════════
     // AUTO-OCULTAR ALERTAS

@@ -24,11 +24,21 @@ class ReparacionController extends Controller
     /**
      * Lista todas las reparaciones.
      */
-    public function index()
+    public function index(Request $request)
     {
+
         $reparaciones = Reparacion::with(['caja', 'abonos'])
+            ->when($request->estado && $request->estado !== 'todos', function ($query) use ($request) {
+                // Filtra por el estado que viene en la URL
+                return $query->where('estado', $request->estado);
+            })
+            ->when(!$request->estado, function ($query) {
+                // Sin filtro: muestra en proceso por defecto
+                return $query->where('estado', 'en_proceso');
+            })
             ->latest()
-            ->get();
+            ->paginate(10);
+
 
         $cajasLibres = Caja::libres()
             ->orderBy('grupo')
@@ -49,7 +59,6 @@ class ReparacionController extends Controller
             return redirect()
                 ->route('admin.reparaciones.index')
                 ->with('success', 'Reparación registrada con éxito.');
-
         } catch (\Exception $e) {
             return redirect()
                 ->route('admin.reparaciones.index')
@@ -76,7 +85,6 @@ class ReparacionController extends Controller
                 'success' => true,
                 'message' => 'Estado actualizado correctamente.',
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -106,7 +114,6 @@ class ReparacionController extends Controller
                 'success' => true,
                 'message' => 'Abono registrado correctamente.',
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
