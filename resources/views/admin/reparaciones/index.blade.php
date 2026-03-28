@@ -244,8 +244,18 @@
             <tbody class="divide-y divide-gray-50">
                 @foreach($reparaciones as $rep)
                 <tr class="hover:bg-gray-50/50 transition reparacion-row"
-                    data-estado="{{ $rep->estado->value }}"
-                    data-search="{{ strtolower($rep->nombre_cliente . ' ' . $rep->marca . ' ' . $rep->modelo . ' ' . $rep->caja->nombre_display) }}">
+    data-id="{{ $rep->id }}"
+    data-estado="{{ $rep->estado->value }}"
+    data-edit="{{ json_encode([
+        'id'                => $rep->id,
+        'nombre_cliente'    => $rep->nombre_cliente,
+        'telefono_cliente'  => $rep->telefono_cliente ?? '',
+        'marca'             => $rep->marca,
+        'modelo'            => $rep->modelo ?? '',
+        'descripcion_falla' => $rep->descripcion_falla ?? '',
+        'valor_total'       => (int) $rep->valor_total,
+        'costo_repuestos'   => (int) $rep->costo_repuestos,
+    ]) }}">
 
                     <td class="py-3 px-4 text-gray-400 text-xs">#{{ $rep->id }}</td>
 
@@ -254,15 +264,15 @@
                         <p class="text-gray-400 text-xs">{{ $rep->created_at->format('h:i A') }}</p>
                     </td>
 
-                    <td class="py-3 px-4">
-                        <p class="font-medium text-gray-900">{{ $rep->nombre_cliente }}</p>
-                        <p class="text-xs text-gray-400">{{ $rep->telefono_cliente ?? 'Sin teléfono' }}</p>
-                    </td>
+                    <td class="py-3 px-4" data-celda="cliente">
+    <p class="font-medium text-gray-900">{{ $rep->nombre_cliente }}</p>
+    <p class="text-xs text-gray-400">{{ $rep->telefono_cliente ?? 'Sin teléfono' }}</p>
+</td>
 
-                    <td class="py-3 px-4">
-                        <p class="text-gray-700">{{ $rep->marca }}</p>
-                        <p class="text-xs text-gray-400">{{ $rep->modelo ?? '—' }}</p>
-                    </td>
+                    <td class="py-3 px-4" data-celda="equipo">
+    <p class="text-gray-700">{{ $rep->marca }}</p>
+    <p class="text-xs text-gray-400">{{ $rep->modelo ?? '—' }}</p>
+</td>
 
                     <td class="py-3 px-4">
                         <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">
@@ -270,16 +280,15 @@
                         </span>
                     </td>
 
-                    <td class="py-3 px-4 font-medium text-gray-900">
-                        ${{ number_format($rep->valor_total, 0, ',', '.') }}
-                    </td>
+                    <td class="py-3 px-4 font-medium text-gray-900" data-celda="valor">
+    ${{ number_format($rep->valor_total, 0, ',', '.') }}
+</td>
+                    <td class="py-3 px-4 text-gray-700" data-celda="abonado">
+    ${{ number_format($rep->total_abonado, 0, ',', '.') }}
+</td>
 
-                    <td class="py-3 px-4 text-gray-700">
-                        ${{ number_format($rep->total_abonado, 0, ',', '.') }}
-                    </td>
-
-                    <td class="py-3 px-4">
-                        @php $saldo = $rep->saldo_pendiente; @endphp
+                    <td class="py-3 px-4" data-celda="saldo">
+    @php $saldo = $rep->saldo_pendiente; @endphp
                         <span class="{{ $saldo > 0 ? 'text-red-600' : 'text-green-600' }} font-medium">
                             ${{ number_format($saldo, 0, ',', '.') }}
                         </span>
@@ -299,13 +308,13 @@
                     <td class="py-3 px-4">
                         <div class="flex items-center gap-2">
                             {{-- Botón editar --}}
-                            <a href="{{ route('admin.reparaciones.edit', $rep) }}"
-                               class="text-gray-400 hover:text-blue-600 transition"
-                               title="Editar reparación">
+                            <button onclick="abrirModalEditar(this)"
+        class="text-gray-400 hover:text-blue-600 transition"
+        title="Editar reparación">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
-                            </a>
+                            </button>
                             {{-- Botón registrar abono --}}
                             <button onclick="abrirModalAbono({{ $rep->id }}, '{{ $rep->nombre_cliente }}', {{ $rep->saldo_pendiente }})"
                                     class="text-blue-600 hover:text-blue-800 transition"
@@ -471,6 +480,109 @@
     </div>
 </div>
 
+
+{{-- ============================== --}}
+{{-- MODAL - Editar Reparación       --}}
+{{-- ============================== --}}
+<div id="modal-editar" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50" onclick="cerrarModalEditar()"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+
+        <div class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 rounded-t-2xl flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Editar reparación</h3>
+                <p class="text-sm text-gray-500" id="edit-subtitulo"></p>
+            </div>
+            <button onclick="cerrarModalEditar()" class="p-2 rounded-xl hover:bg-gray-100 transition">
+                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="p-6 space-y-5">
+
+            {{-- Errores --}}
+            <div id="edit-errores" class="hidden bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+                <p class="font-semibold mb-1">Por favor corrige los siguientes errores:</p>
+                <ul id="edit-errores-lista" class="list-disc list-inside space-y-0.5"></ul>
+            </div>
+
+            {{-- Cliente --}}
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Cliente</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
+                        <input type="text" id="edit-nombre_cliente" placeholder="Juan Pérez"
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">Teléfono</label>
+                        <input type="text" id="edit-telefono_cliente" placeholder="310 123 4567"
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                </div>
+            </div>
+
+            {{-- Equipo --}}
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Equipo</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
+                        <input type="text" id="edit-marca" placeholder="Samsung, iPhone..."
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">Modelo</label>
+                        <input type="text" id="edit-modelo" placeholder="Galaxy S24..."
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="text-xs text-gray-500 mb-1 block">Descripción de la falla</label>
+                    <textarea id="edit-descripcion_falla" rows="2" placeholder="¿Qué le pasa al equipo?"
+                              class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none"></textarea>
+                </div>
+            </div>
+
+            {{-- Valores --}}
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Valores</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">Valor total *</label>
+                        <input type="text" id="edit-valor_total_visual" placeholder="150.000" inputmode="numeric"
+                               oninput="formatearPrecio(this, 'edit-valor_total')"
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        <input type="hidden" id="edit-valor_total">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">Costo repuestos</label>
+                        <input type="text" id="edit-costo_repuestos_visual" placeholder="50.000" inputmode="numeric"
+                               oninput="formatearPrecio(this, 'edit-costo_repuestos')"
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        <input type="hidden" id="edit-costo_repuestos">
+                    </div>
+                </div>
+            </div>
+
+            {{-- Botones --}}
+            <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                <button type="button" onclick="cerrarModalEditar()"
+                        class="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition">
+                    Cancelar
+                </button>
+                <button type="button" onclick="guardarEdicion()" id="edit-btn-guardar"
+                        class="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm shadow-blue-600/20">
+                    Guardar cambios
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- ============================== --}}
 {{-- MODAL - Registrar Abono         --}}
 {{-- ============================== --}}
@@ -527,6 +639,132 @@
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
+
+    // ══════════════════════════════════════
+// MODAL EDITAR
+// ══════════════════════════════════════
+let editReparacionId = null;
+let editFila = null;
+
+function abrirModalEditar(btn) {
+    const fila  = btn.closest('tr');
+    const datos = JSON.parse(fila.dataset.edit);
+
+    editReparacionId = datos.id;
+    editFila = fila;
+
+    document.getElementById('edit-subtitulo').textContent = `Reparación #${datos.id}`;
+    document.getElementById('edit-nombre_cliente').value    = datos.nombre_cliente;
+    document.getElementById('edit-telefono_cliente').value  = datos.telefono_cliente;
+    document.getElementById('edit-marca').value             = datos.marca;
+    document.getElementById('edit-modelo').value            = datos.modelo;
+    document.getElementById('edit-descripcion_falla').value = datos.descripcion_falla;
+
+    document.getElementById('edit-valor_total').value        = datos.valor_total;
+    document.getElementById('edit-valor_total_visual').value = datos.valor_total
+        ? datos.valor_total.toLocaleString('es-CO') : '';
+
+    document.getElementById('edit-costo_repuestos').value        = datos.costo_repuestos;
+    document.getElementById('edit-costo_repuestos_visual').value = datos.costo_repuestos
+        ? datos.costo_repuestos.toLocaleString('es-CO') : '';
+
+    document.getElementById('edit-errores').classList.add('hidden');
+    document.getElementById('edit-errores-lista').innerHTML = '';
+    document.getElementById('modal-editar').classList.remove('hidden');
+}
+
+function cerrarModalEditar() {
+    document.getElementById('modal-editar').classList.add('hidden');
+    editReparacionId = null;
+    editFila = null;
+}
+
+function guardarEdicion() {
+    const btn    = document.getElementById('edit-btn-guardar');
+    const nombre = document.getElementById('edit-nombre_cliente').value.trim();
+    const marca  = document.getElementById('edit-marca').value.trim();
+    const valor  = document.getElementById('edit-valor_total').value;
+
+    if (!nombre || !marca || !valor) {
+        document.getElementById('edit-errores-lista').innerHTML = '<li>Nombre, marca y valor total son obligatorios.</li>';
+        document.getElementById('edit-errores').classList.remove('hidden');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    const payload = {
+        _method:           'PUT',
+        nombre_cliente:    nombre,
+        telefono_cliente:  document.getElementById('edit-telefono_cliente').value.trim(),
+        marca:             marca,
+        modelo:            document.getElementById('edit-modelo').value.trim(),
+        descripcion_falla: document.getElementById('edit-descripcion_falla').value.trim(),
+        valor_total:       valor,
+        costo_repuestos:   document.getElementById('edit-costo_repuestos').value || null,
+    };
+
+    fetch(`/admin/reparaciones/${editReparacionId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'X-HTTP-Method-Override': 'PUT',
+        },
+        body: JSON.stringify(payload),
+    })
+    .then(res => res.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'Guardar cambios';
+
+        if (data.success) {
+            cerrarModalEditar();
+            actualizarFilaEdicion(data.data);
+            mostrarNotificacion(data.message);
+        } else {
+            const errores = data.errors
+                ? Object.values(data.errors).flat()
+                : [data.message];
+            document.getElementById('edit-errores-lista').innerHTML = errores.map(e => `<li>${e}</li>`).join('');
+            document.getElementById('edit-errores').classList.remove('hidden');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = 'Guardar cambios';
+        mostrarNotificacion('Error de conexión', 'error');
+    });
+}
+
+function actualizarFilaEdicion(datos) {
+    if (!editFila) return;
+
+    editFila.querySelector('[data-celda="cliente"]').innerHTML = `
+        <p class="font-medium text-gray-900">${datos.nombre_cliente}</p>
+        <p class="text-xs text-gray-400">${datos.telefono_cliente || 'Sin teléfono'}</p>`;
+
+    editFila.querySelector('[data-celda="equipo"]').innerHTML = `
+        <p class="text-gray-700">${datos.marca}</p>
+        <p class="text-xs text-gray-400">${datos.modelo || '—'}</p>`;
+
+    editFila.querySelector('[data-celda="valor"]').textContent = '$' + datos.valor_total.toLocaleString('es-CO');
+
+    const abonado = parseInt(editFila.querySelector('[data-celda="abonado"]').textContent.replace(/\D/g, '')) || 0;
+    const saldo   = datos.valor_total - abonado;
+    editFila.querySelector('[data-celda="saldo"]').innerHTML = `
+        <span class="${saldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">
+            $${saldo.toLocaleString('es-CO')}
+        </span>`;
+
+    // Actualizar data-edit con valores frescos para una segunda edición
+    editFila.dataset.edit = JSON.stringify({
+        ...JSON.parse(editFila.dataset.edit),
+        ...datos,
+    });
+}
 
 
 // ══════════════════════════════════════
@@ -702,54 +940,51 @@
     }
 
     function guardarAbono() {
-        const reparacionId = document.getElementById('abono-reparacion-id').value;
-        const monto = document.getElementById('abono-monto').value;
-        const nota = document.getElementById('abono-nota').value;
+    const reparacionId = document.getElementById('abono-reparacion-id').value;
+    const monto        = document.getElementById('abono-monto').value;
+    const nota         = document.getElementById('abono-nota').value;
 
-        if (!monto || monto <= 0) {
-            mostrarNotificacion('Ingresa un monto válido', 'error');
-            return;
-        }
-
-        fetch(`/admin/reparaciones/${reparacionId}/abono`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'Accept': 'application/json',
-            },
-            body: JSON.stringify({ monto, nota })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                // Cerrar modal
-                document.getElementById('modal-abono').classList.add('hidden');
-
-                // Actualizar la fila en la tabla sin recargar
-                const fila = document.querySelector(`tr[data-search] select[onchange*="${reparacionId}"]`).closest('tr');
-                if (fila) {
-                    const celdas = fila.querySelectorAll('td');
-                    // Celda 5 = abonado, Celda 6 = saldo
-                    const abonadoActual = parseInt(celdas[5].textContent.replace(/\D/g, '')) || 0;
-                    const nuevoAbonado = abonadoActual + parseInt(monto);
-                    const valorTotal = parseInt(celdas[4].textContent.replace(/\D/g, '')) || 0;
-                    const nuevoSaldo = valorTotal - nuevoAbonado;
-
-                    // Actualizar abonado
-                    celdas[5].innerHTML = `$${nuevoAbonado.toLocaleString('es-CO')}`;
-
-                    // Actualizar saldo con color
-                    celdas[6].innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
-                }
-
-                mostrarNotificacion('Abono registrado correctamente');
-            } else {
-                mostrarNotificacion('Error: ' + data.message, 'error');
-            }
-        })
-        .catch(() => mostrarNotificacion('Error de conexión', 'error'));
+    if (!monto || monto <= 0) {
+        mostrarNotificacion('Ingresa un monto válido', 'error');
+        return;
     }
+
+    fetch(`/admin/reparaciones/${reparacionId}/abono`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({ monto, nota })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('modal-abono').classList.add('hidden');
+
+            const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
+            if (fila) {
+                const celdaAbonado = fila.querySelector('[data-celda="abonado"]');
+                const celdaValor   = fila.querySelector('[data-celda="valor"]');
+                const celdaSaldo   = fila.querySelector('[data-celda="saldo"]');
+
+                const abonadoActual = parseInt(celdaAbonado.textContent.replace(/\D/g, '')) || 0;
+                const valorTotal    = parseInt(celdaValor.textContent.replace(/\D/g, '')) || 0;
+                const nuevoAbonado  = abonadoActual + parseInt(monto);
+                const nuevoSaldo    = valorTotal - nuevoAbonado;
+
+                celdaAbonado.textContent = '$' + nuevoAbonado.toLocaleString('es-CO');
+                celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
+            }
+
+            mostrarNotificacion('Abono registrado correctamente');
+        } else {
+            mostrarNotificacion('Error: ' + data.message, 'error');
+        }
+    })
+    .catch(() => mostrarNotificacion('Error de conexión', 'error'));
+}
 
     // ══════════════════════════════════════
     // FILTROS

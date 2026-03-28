@@ -78,21 +78,6 @@ class ReparacionController extends Controller
         return view('admin.reparaciones.index', compact('reparaciones', 'cajasLibres', 'contadores'));
     }
 
-    /**
-     * Muestra el formulario de edición de una reparación existente.
-     *
-     * Route Model Binding: Laravel resuelve automáticamente la reparación
-     * por el segmento {reparacion} de la URL. Si no existe, devuelve 404.
-     */
-    public function edit(Reparacion $reparacion)
-    {
-        // Cargamos las relaciones necesarias para la vista:
-        // - caja  → para mostrar en qué caja está guardado el equipo (solo lectura)
-        // - abonos → para que funcionen los accessors total_abonado y saldo_pendiente
-        $reparacion->load(['caja', 'abonos']);
-
-        return view('admin.reparaciones.edit', compact('reparacion'));
-    }
 
     /**
      * Persiste los cambios de una reparación existente.
@@ -104,18 +89,27 @@ class ReparacionController extends Controller
     public function update(UpdateReparacionRequest $request, Reparacion $reparacion)
     {
         try {
-            // validated() devuelve únicamente los campos que pasaron las reglas,
-            // garantizando que caja_id, estado y fecha_entrega no sean modificados.
             $reparacion->update($request->validated());
 
-            return redirect()
-                ->route('admin.reparaciones.index')
-                ->with('success', "Reparación #{$reparacion->id} actualizada con éxito.");
+            return response()->json([
+                'success' => true,
+                'message' => "Reparación #{$reparacion->id} actualizada con éxito.",
+                'data'    => [
+                    'id'                => $reparacion->id,
+                    'nombre_cliente'    => $reparacion->nombre_cliente,
+                    'telefono_cliente'  => $reparacion->telefono_cliente,
+                    'marca'             => $reparacion->marca,
+                    'modelo'            => $reparacion->modelo,
+                    'descripcion_falla' => $reparacion->descripcion_falla,
+                    'valor_total'       => (int) $reparacion->valor_total,
+                    'costo_repuestos'   => (int) $reparacion->costo_repuestos,
+                ],
+            ]);
         } catch (\Exception $e) {
-            return redirect()
-                ->back()
-                ->withInput()
-                ->with('error', 'Error al actualizar la reparación: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
