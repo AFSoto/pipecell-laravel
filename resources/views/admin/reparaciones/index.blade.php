@@ -243,7 +243,18 @@
             </thead>
             <tbody class="divide-y divide-gray-50">
                 @foreach($reparaciones as $rep)
-                <tr class="hover:bg-gray-50/50 transition reparacion-row"
+                @php
+    $diasEnProceso = $rep->estado->value === 'en_proceso'
+        ? $rep->created_at->diffInDays(now())
+        : null;
+    $filaClase = match(true) {
+        $diasEnProceso >= 15 => 'hover:bg-red-50/80 bg-red-50/40',
+        $diasEnProceso >= 8  => 'hover:bg-amber-50/80 bg-amber-50/40',
+        default              => 'hover:bg-gray-50/50',
+    };
+@endphp
+<tr class="transition reparacion-row {{ $filaClase }}"
+
     data-id="{{ $rep->id }}"
     data-estado="{{ $rep->estado->value }}"
     data-edit="{{ json_encode([
@@ -265,9 +276,18 @@
                     <td class="py-3 px-4 text-gray-400 text-xs">#{{ $rep->id }}</td>
 
                     <td class="py-3 px-4 whitespace-nowrap">
-                        <p class="text-gray-700 text-xs">{{ $rep->created_at->format('d/m/Y') }}</p>
-                        <p class="text-gray-400 text-xs">{{ $rep->created_at->format('h:i A') }}</p>
-                    </td>
+    <p class="text-gray-700 text-xs">{{ $rep->created_at->format('d/m/Y') }}</p>
+    <p class="text-gray-400 text-xs">{{ $rep->created_at->format('h:i A') }}</p>
+    @if($diasEnProceso >= 15)
+        <span class="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-lg bg-red-100 text-red-600">
+            {{ $diasEnProceso }} días
+        </span>
+    @elseif($diasEnProceso >= 8)
+        <span class="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-600">
+            {{ $diasEnProceso }} días
+        </span>
+    @endif
+</td>
 
                     <td class="py-3 px-4" data-celda="cliente">
     <p class="font-medium text-gray-900">{{ $rep->nombre_cliente }}</p>
