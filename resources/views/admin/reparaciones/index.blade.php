@@ -972,14 +972,29 @@ function actualizarFilaEdicion(datos) {
     // MODAL DE ABONOS
     // ══════════════════════════════════════
     function abrirModalAbono(reparacionId, clienteNombre, saldo) {
-        document.getElementById('abono-reparacion-id').value = reparacionId;
-        document.getElementById('abono-cliente-nombre').textContent = clienteNombre;
-        document.getElementById('abono-saldo-display').textContent = '$' + saldo.toLocaleString('es-CO');
-        document.getElementById('abono-monto').value = '';
-        document.getElementById('abono-monto-visual').value = '';
-        document.getElementById('abono-nota').value = '';
-        document.getElementById('modal-abono').classList.remove('hidden');
+    document.getElementById('abono-reparacion-id').value        = reparacionId;
+    document.getElementById('abono-cliente-nombre').textContent = clienteNombre;
+    document.getElementById('abono-saldo-display').textContent  = '$' + saldo.toLocaleString('es-CO');
+    document.getElementById('abono-monto').value                = '';
+    document.getElementById('abono-monto-visual').value         = '';
+    document.getElementById('abono-nota').value                 = '';
+
+    const btn = document.querySelector('#modal-abono button[onclick="guardarAbono()"]');
+
+    if (saldo <= 0) {
+        btn.disabled = true;
+        btn.textContent = 'Reparación ya pagada';
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.classList.remove('hover:bg-blue-700');
+    } else {
+        btn.disabled = false;
+        btn.textContent = 'Registrar abono';
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        btn.classList.add('hover:bg-blue-700');
     }
+
+    document.getElementById('modal-abono').classList.remove('hidden');
+}
 
     function guardarAbono() {
     const reparacionId = document.getElementById('abono-reparacion-id').value;

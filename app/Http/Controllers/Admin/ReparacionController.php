@@ -168,6 +168,22 @@ class ReparacionController extends Controller
             'nota'  => ['nullable', 'string', 'max:255'],
         ]);
 
+        $saldo = $reparacion->saldo_pendiente;
+
+        if ($saldo <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta reparación ya está pagada completamente.',
+            ], 422);
+        }
+
+        if ($request->monto > $saldo) {
+            return response()->json([
+                'success' => false,
+                'message' => "El monto supera el saldo pendiente de $" . number_format($saldo, 0, ',', '.') . ".",
+            ], 422);
+        }
+
         try {
             $this->reparacionService->registrarAbono(
                 $reparacion,
