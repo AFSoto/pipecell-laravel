@@ -20,11 +20,33 @@
         transition-all hace que el cambio sea suave.
     --}}
     <style>
-        .sidebar-expanded { width: 16rem; }
-        .sidebar-collapsed { width: 5rem; }
-        .content-expanded { margin-left: 16rem; }
-        .content-collapsed { margin-left: 5rem; }
-    </style>
+    .sidebar-expanded { width: 16rem; }
+    .sidebar-collapsed { width: 5rem; }
+    .content-expanded { margin-left: 16rem; }
+    .content-collapsed { margin-left: 5rem; }
+    /* Evita flash del sidebar al recargar */
+    #main-content { transition: none; }
+</style>
+<script>
+    // Aplica el margin correcto al contenido antes de que el navegador pinte
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.innerWidth >= 1024) {
+            const collapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+            const mainContent = document.getElementById('main-content');
+            if (collapsed) {
+                mainContent.classList.remove('content-expanded');
+                mainContent.classList.add('content-collapsed');
+            } else {
+                mainContent.classList.remove('content-collapsed');
+                mainContent.classList.add('content-expanded');
+            }
+            // Activar transiciones después de aplicar el estado inicial
+            setTimeout(() => {
+                mainContent.style.transition = 'margin-left 0.3s';
+            }, 50);
+        }
+    });
+</script>
 </head>
 <body class="min-h-screen bg-gray-50">
 
@@ -254,11 +276,22 @@
 
         // Toggle móvil: abrir/cerrar como overlay
         function toggleMobileSidebar() {
-            sidebar.classList.toggle('-translate-x-full');
-            document.getElementById('sidebar-overlay').classList.toggle('hidden');
-            // En móvil siempre mostrar expandido
-            expandSidebar();
-        }
+    const isHidden = sidebar.classList.contains('-translate-x-full');
+    sidebar.classList.toggle('-translate-x-full');
+    document.getElementById('sidebar-overlay').classList.toggle('hidden');
+
+    if (isHidden) {
+        // Al abrir en móvil: expandir sidebar pero sin tocar el margin del contenido
+        sidebar.classList.remove('sidebar-collapsed');
+        sidebar.classList.add('sidebar-expanded');
+        sidebarTexts.forEach(el => {
+            el.style.opacity = '1';
+            el.style.width = 'auto';
+            el.style.overflow = 'visible';
+        });
+    }
+    // Al cerrar: no hacemos nada con el contenido, el overlay desaparece solo
+}
 
         // Aplicar estado al cargar (solo en desktop)
         if (window.innerWidth >= 1024) {
