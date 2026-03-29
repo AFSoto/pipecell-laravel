@@ -58,8 +58,11 @@ class DashboardController extends Controller
         ])->count();
 
         // ── 3. CONTADORES POR ESTADO (para la gráfica doughnut) ──
-        // Una sola consulta con GROUP BY en vez de 3 consultas separadas
-        $contadoresBD = Reparacion::select('estado', DB::raw('COUNT(*) as total'))
+        // Usamos DB::table() (no Eloquent) para que las claves del pluck sean strings
+        // crudos ('en_proceso', 'arreglado', 'entregado') y no instancias del enum,
+        // lo que causaría un "Illegal offset type" al acceder $contadoresBD['en_proceso'].
+        $contadoresBD = DB::table('reparaciones')
+            ->select('estado', DB::raw('COUNT(*) as total'))
             ->groupBy('estado')
             ->pluck('total', 'estado');
 
@@ -93,15 +96,26 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
 
-        // Valor máximo de la marca #1 para calcular el ancho de las barras de progreso en %
-        $maxMarca = $topMarcas->max('total') ?: 1;
+        // Arrays separados de labels/datos listos para Chart.js (horizontal bar)
+        $topMarcasChart = [
+            'labels' => $topMarcas->pluck('marca')->toArray(),
+            'datos'  => $topMarcas->pluck('total')->map(fn ($v) => (int) $v)->toArray(),
+        ];
+
+        // ── 8. ACTIVIDAD DIARIA (últimos 30 días para la gráfica de área) ──
+        $reparacionesDiarias = $this->obtenerReparacionesDiarias();
+
+        // ── 9. ESTADÍSTICAS DE COBRO (reparaciones activas en taller) ──
+        $estadisticasCobro = $this->obtenerEstadisticasCobro();
 
         return view('admin.dashboard', compact(
             'periodo', 'desde', 'hasta',
             'metricas', 'cambioPorcentaje',
             'reparacionesActivas', 'contadores',
             'ingresosPorMes', 'cajasPorGrupo',
-            'ultimasReparaciones', 'topMarcas', 'maxMarca'
+            'ultimasReparaciones',
+            'topMarcas', 'topMarcasChart',
+            'reparacionesDiarias', 'estadisticasCobro'
         ));
     }
 
@@ -346,5 +360,76 @@ class DashboardController extends Controller
             })
             // Agrupar por grupo para que la vista pueda renderizar "Grupo A", "Grupo B"...
             ->groupBy('grupo');
+    }
+
+    /**
+     * Obtiene el conteo de reparaciones creadas por día en los últimos 30 días.
+     * Alimenta la gráfica de área de "Actividad diaria".
+     *
+     * Retorna arrays listos para Chart.js:
+     *   - labels: ['1 Mar', '2 Mar', ..., '30 Mar'] (30 elementos)
+     *   - datos:  [3, 7, 2, ..., 5]                 (30 elementos, 0 si no hay)
+     */
+    private function obtenerReparacionesDiarias(): array
+    {
+        // Una sola consulta con GROUP BY DATE para los últimos 30 días
+        $resultados = Reparacion::select(
+                DB::raw('DATE(created_at) as fecha'),
+                DB::raw('COUNT(*) as total')
+            )
+            ->where('created_at', '>=', now()->subDays(29)->startOfDay())
+            ->groupBy('fecha')
+            ->orderBy('fecha')
+            ->get()
+            // Indexar por fecha "YYYY-MM-DD" para búsqueda O(1)
+            ->keyBy('fecha');
+
+        $nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+        $labels = [];
+        $datos  = [];
+
+        // Construir array de 30 días: del más antiguo ($i=29) al más reciente ($i=0)
+        for ($i = 29; $i >= 0; $i--) {
+            $fecha    = now()->subDays($i);
+            $fechaKey = $fecha->format('Y-m-d');
+
+            // Formato compacto: "15 Mar" — suficiente para 30 puntos en el eje X
+            $labels[] = $fecha->day . ' ' . $nombresMeses[$fecha->month - 1];
+            $datos[]  = isset($resultados[$fechaKey]) ? (int) $resultados[$fechaKey]->total : 0;
+        }
+
+        return ['labels' => $labels, 'datos' => $datos];
+    }
+
+    /**
+     * Calcula cuánto se ha cobrado y cuánto queda pendiente
+     * de las reparaciones que aún están en el taller (en_proceso + arreglado).
+     *
+     * Usa dos consultas simples en vez de un JOIN problemático:
+     * un JOIN entre reparaciones y abonos multiplicaría valor_total
+     * por cada abono, dando un SUM incorrecto.
+     *
+     * @return object{total_valor, total_cobrado, pendiente, porcentaje}
+     */
+    private function obtenerEstadisticasCobro(): object
+    {
+        // Total de lo que vale cobrar por reparaciones activas
+        $totalValor = (float) Reparacion::whereIn('estado', [
+            EstadoReparacion::EnProceso,
+            EstadoReparacion::Arreglado,
+        ])->sum('valor_total');
+
+        // Total de abonos ya registrados para esas reparaciones activas
+        $totalCobrado = (float) DB::table('abonos')
+            ->join('reparaciones', 'abonos.reparacion_id', '=', 'reparaciones.id')
+            ->whereIn('reparaciones.estado', ['en_proceso', 'arreglado'])
+            ->sum('abonos.monto');
+
+        $pendiente   = $totalValor - $totalCobrado;
+        // Porcentaje cobrado: evitar división por cero si no hay reparaciones activas
+        $porcentaje  = $totalValor > 0 ? (int) round(($totalCobrado / $totalValor) * 100) : 0;
+
+        return (object) compact('totalValor', 'totalCobrado', 'pendiente', 'porcentaje');
     }
 }
