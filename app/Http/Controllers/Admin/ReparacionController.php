@@ -27,7 +27,7 @@ class ReparacionController extends Controller
      */
     public function index(Request $request)
     {
-        $estado  = $request->input('estado');
+        $estado  = $request->input('estado', 'en_proceso');
         $periodo = $request->input('periodo', 'mes');
         $buscar  = $request->input('buscar');
         $desde   = $request->input('desde');

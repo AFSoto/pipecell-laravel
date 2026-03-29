@@ -104,8 +104,8 @@
         {{-- Select Estado --}}
         <select name="estado" id="select-estado"
                 class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
-            <option value="todos"      {{ (!$fEstado || $fEstado === 'todos')   ? 'selected' : '' }}>Todos</option>
-            <option value="en_proceso" {{ $fEstado === 'en_proceso'             ? 'selected' : '' }}>En proceso</option>
+            <option value="todos"      {{ $fEstado === 'todos' ? 'selected' : '' }}>Todos</option>
+            <option value="en_proceso" {{ (!$fEstado || $fEstado === 'en_proceso') ? 'selected' : '' }}>En proceso</option>
             <option value="arreglado"  {{ $fEstado === 'arreglado'              ? 'selected' : '' }}>Arreglados</option>
             <option value="entregado"  {{ $fEstado === 'entregado'              ? 'selected' : '' }}>Entregados</option>
         </select>
