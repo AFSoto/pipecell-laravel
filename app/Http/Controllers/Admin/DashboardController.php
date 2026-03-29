@@ -58,13 +58,17 @@ class DashboardController extends Controller
         ])->count();
 
         // ── 3. CONTADORES POR ESTADO (para la gráfica doughnut) ──
-        // Usamos DB::table() (no Eloquent) para que las claves del pluck sean strings
-        // crudos ('en_proceso', 'arreglado', 'entregado') y no instancias del enum,
-        // lo que causaría un "Illegal offset type" al acceder $contadoresBD['en_proceso'].
-        $contadoresBD = DB::table('reparaciones')
+        // Aplicamos el mismo filtro de periodo que las tarjetas KPI, así el doughnut
+        // muestra la distribución de reparaciones DENTRO del periodo seleccionado.
+        // Usamos DB::table() para que las claves del pluck sean strings crudos
+        // y no instancias del enum (que causaría "Illegal offset type").
+        $queryContadores = DB::table('reparaciones')
             ->select('estado', DB::raw('COUNT(*) as total'))
-            ->groupBy('estado')
-            ->pluck('total', 'estado');
+            ->groupBy('estado');
+
+        $this->aplicarFiltroPeriodo($queryContadores, $periodo, $desde, $hasta);
+
+        $contadoresBD = $queryContadores->pluck('total', 'estado');
 
         $contadores = [
             'en_proceso' => (int) ($contadoresBD['en_proceso'] ?? 0),
@@ -72,8 +76,8 @@ class DashboardController extends Controller
             'entregado'  => (int) ($contadoresBD['entregado'] ?? 0),
         ];
 
-        // ── 4. INGRESOS POR MES (últimos 12 meses para la gráfica de barras) ──
-        $ingresosPorMes = $this->obtenerIngresosPorMes();
+        // ── 4. INGRESOS PARA LA GRÁFICA DE BARRAS (granularidad según periodo) ──
+        $ingresosPorMes = $this->obtenerIngresosPorMes($periodo, $desde, $hasta);
 
         // ── 5. ESTADO DE CAJAS AGRUPADAS POR GRUPO ──
         // Incluye el nombre del cliente si la caja está ocupada
@@ -263,19 +267,139 @@ class DashboardController extends Controller
     }
 
     /**
-     * Obtiene los ingresos mensuales de los últimos 12 meses
-     * agrupados para alimentar la gráfica de barras de Chart.js.
+     * Obtiene los datos de ingresos para la gráfica de barras.
+     * La granularidad (diaria, mensual) y el rango cambian según el periodo:
      *
-     * Retorna un array con dos sub-arrays:
-     *   - labels: ['Ene', 'Feb', ..., 'Dic'] (12 elementos)
-     *   - datos:  [1800000, 2100000, ..., 0]  (12 elementos, 0 si no hay datos)
+     *   hoy / semana    → últimos 30 días, agrupado por DÍA
+     *   mes_pasado      → últimos 13 meses, agrupado por MES (incluye mes anterior completo)
+     *   trimestre       → últimos 6 meses, agrupado por MES
+     *   anio            → enero a diciembre del año actual, agrupado por MES
+     *   personalizado   → últimos 12 meses, agrupado por MES
+     *   mes (default)   → últimos 12 meses, agrupado por MES
      *
-     * Se incluyen los 12 meses aunque algunos tengan valor 0,
-     * para que la gráfica siempre muestre el año completo.
+     * Retorna:
+     *   labels   → etiquetas del eje X
+     *   datos    → valores de ingresos paralelos a labels
+     *   titulo   → título dinámico para la cabecera del card
+     *   subtitulo → subtítulo dinámico
      */
-    private function obtenerIngresosPorMes(): array
+    private function obtenerIngresosPorMes(string $periodo, ?string $desde, ?string $hasta): array
     {
-        // Consultar la BD: ingresos agrupados por año y mes en el período
+        $nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+        // ── Caso 1: hoy / semana → granularidad DIARIA (últimos 30 días) ──────
+        if (in_array($periodo, ['hoy', 'semana'])) {
+            $resultados = Reparacion::entregadas()
+                ->where('created_at', '>=', now()->subDays(29)->startOfDay())
+                ->selectRaw('DATE(created_at) AS fecha, SUM(valor_total) AS total')
+                ->groupBy('fecha')
+                ->orderBy('fecha')
+                ->get()
+                ->keyBy('fecha');
+
+            $labels = [];
+            $datos  = [];
+            for ($i = 29; $i >= 0; $i--) {
+                $fecha    = now()->subDays($i);
+                $fechaKey = $fecha->format('Y-m-d');
+                $labels[] = $fecha->day . ' ' . $nombresMeses[$fecha->month - 1];
+                $datos[]  = isset($resultados[$fechaKey]) ? (float) $resultados[$fechaKey]->total : 0;
+            }
+
+            return [
+                'labels'    => $labels,
+                'datos'     => $datos,
+                'titulo'    => 'Ingresos diarios',
+                'subtitulo' => 'Últimos 30 días · reparaciones entregadas',
+            ];
+        }
+
+        // ── Caso 2: anio → enero a diciembre del año actual ──────────────────
+        if ($periodo === 'anio') {
+            $resultados = Reparacion::entregadas()
+                ->whereYear('created_at', now()->year)
+                ->selectRaw('MONTH(created_at) AS mes, SUM(valor_total) AS total')
+                ->groupBy('mes')
+                ->get()
+                ->keyBy('mes');
+
+            $datos = [];
+            for ($m = 1; $m <= 12; $m++) {
+                $datos[] = isset($resultados[$m]) ? (float) $resultados[$m]->total : 0;
+            }
+
+            return [
+                'labels'    => $nombresMeses,   // siempre Ene-Dic
+                'datos'     => $datos,
+                'titulo'    => 'Ingresos mensuales',
+                'subtitulo' => now()->year . ' · reparaciones entregadas',
+            ];
+        }
+
+        // ── Caso 3: trimestre → últimos 6 meses para tener contexto ──────────
+        if ($periodo === 'trimestre') {
+            $mesesAtras = 5; // 6 barras: mes actual + 5 anteriores
+            $resultados = Reparacion::entregadas()
+                ->where('created_at', '>=', now()->subMonths($mesesAtras)->startOfMonth())
+                ->selectRaw('YEAR(created_at) AS anio, MONTH(created_at) AS mes, SUM(valor_total) AS total')
+                ->groupBy('anio', 'mes')
+                ->orderBy('anio')
+                ->orderBy('mes')
+                ->get()
+                ->keyBy(fn ($r) => $r->anio . '-' . str_pad((string) $r->mes, 2, '0', STR_PAD_LEFT));
+
+            $labels = [];
+            $datos  = [];
+            for ($i = $mesesAtras; $i >= 0; $i--) {
+                $fecha    = now()->subMonths($i)->startOfMonth();
+                $key      = $fecha->format('Y') . '-' . str_pad((string) $fecha->month, 2, '0', STR_PAD_LEFT);
+                $labels[] = $nombresMeses[$fecha->month - 1];
+                $datos[]  = isset($resultados[$key]) ? (float) $resultados[$key]->total : 0;
+            }
+
+            return [
+                'labels'    => $labels,
+                'datos'     => $datos,
+                'titulo'    => 'Ingresos mensuales',
+                'subtitulo' => 'Últimos 6 meses · reparaciones entregadas',
+            ];
+        }
+
+        // ── Caso 4: personalizado → mensual dentro del rango elegido ────────────
+        if ($periodo === 'personalizado' && $desde && $hasta) {
+            $fechaInicio = \Carbon\Carbon::parse($desde)->startOfMonth();
+            $fechaFin    = \Carbon\Carbon::parse($hasta)->endOfMonth();
+
+            $resultados = Reparacion::entregadas()
+                ->whereBetween('created_at', [$desde, $hasta . ' 23:59:59'])
+                ->selectRaw('YEAR(created_at) AS anio, MONTH(created_at) AS mes, SUM(valor_total) AS total')
+                ->groupBy('anio', 'mes')
+                ->orderBy('anio')
+                ->orderBy('mes')
+                ->get()
+                ->keyBy(fn ($r) => $r->anio . '-' . str_pad((string) $r->mes, 2, '0', STR_PAD_LEFT));
+
+            $labels  = [];
+            $datos   = [];
+            $current = $fechaInicio->copy();
+
+            // Iterar mes a mes dentro del rango personalizado
+            while ($current->lte($fechaFin)) {
+                $key      = $current->format('Y') . '-' . str_pad((string) $current->month, 2, '0', STR_PAD_LEFT);
+                $labels[] = $nombresMeses[$current->month - 1] . ' ' . $current->format('y');
+                $datos[]  = isset($resultados[$key]) ? (float) $resultados[$key]->total : 0;
+                $current->addMonth();
+            }
+
+            return [
+                'labels'    => $labels,
+                'datos'     => $datos,
+                'titulo'    => 'Ingresos mensuales',
+                'subtitulo' => $desde . ' al ' . $hasta,
+            ];
+        }
+
+        // ── Caso 5 (default): mes, mes_pasado → últimos 12 meses ─────────────
         $resultados = Reparacion::entregadas()
             ->where('created_at', '>=', now()->subMonths(11)->startOfMonth())
             ->selectRaw('
@@ -287,30 +411,22 @@ class DashboardController extends Controller
             ->orderBy('anio')
             ->orderBy('mes')
             ->get()
-            // Indexar por "YYYY-MM" para búsqueda O(1) al armar el array de 12 elementos
             ->keyBy(fn ($r) => $r->anio . '-' . str_pad((string) $r->mes, 2, '0', STR_PAD_LEFT));
-
-        // Nombres abreviados de los 12 meses en español
-        $nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
         $labels = [];
         $datos  = [];
-
-        // Construir el array de 12 posiciones, del mes más antiguo al más reciente
-        // $i = 11 → el mes de hace 11 meses (el más viejo en la gráfica, eje X izquierda)
-        // $i = 0  → el mes actual (el más reciente, eje X derecha)
         for ($i = 11; $i >= 0; $i--) {
-            $fecha = now()->subMonths($i)->startOfMonth();
-            $key   = $fecha->format('Y') . '-' . str_pad((string) $fecha->month, 2, '0', STR_PAD_LEFT);
-
+            $fecha    = now()->subMonths($i)->startOfMonth();
+            $key      = $fecha->format('Y') . '-' . str_pad((string) $fecha->month, 2, '0', STR_PAD_LEFT);
             $labels[] = $nombresMeses[$fecha->month - 1];
-            // Si no hay datos para ese mes, usamos 0 (gráfica no queda vacía)
             $datos[]  = isset($resultados[$key]) ? (float) $resultados[$key]->total : 0;
         }
 
         return [
-            'labels' => $labels,
-            'datos'  => $datos,
+            'labels'    => $labels,
+            'datos'     => $datos,
+            'titulo'    => 'Ingresos mensuales',
+            'subtitulo' => 'Últimos 12 meses · reparaciones entregadas',
         ];
     }
 

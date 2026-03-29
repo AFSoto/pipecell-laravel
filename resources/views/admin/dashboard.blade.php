@@ -215,8 +215,8 @@
                 hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
         <div class="flex items-start justify-between mb-6">
             <div>
-                <h3 class="font-semibold text-gray-900">Ingresos mensuales</h3>
-                <p class="text-xs text-gray-400 mt-0.5">Últimos 12 meses · reparaciones entregadas</p>
+                <h3 class="font-semibold text-gray-900">{{ $ingresosPorMes['titulo'] }}</h3>
+                <p class="text-xs text-gray-400 mt-0.5">{{ $ingresosPorMes['subtitulo'] }}</p>
             </div>
             <div class="flex items-center gap-4 text-xs">
                 <div class="flex items-center gap-1.5">
@@ -240,7 +240,7 @@
                 hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
         <div class="mb-5">
             <h3 class="font-semibold text-gray-900">Por estado</h3>
-            <p class="text-xs text-gray-400 mt-0.5">Total actual · sin filtro de fecha</p>
+            <p class="text-xs text-gray-400 mt-0.5">Distribución del periodo seleccionado</p>
         </div>
         {{-- Centro del doughnut: total de reparaciones --}}
         <div class="relative h-44 flex items-center justify-center">
