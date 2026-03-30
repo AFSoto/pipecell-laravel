@@ -82,6 +82,18 @@
 {{-- ============================================================ --}}
 {{-- FILA 1: TARJETAS KPI (4 métricas principales)               --}}
 {{-- ============================================================ --}}
+
+{{-- Nota informativa: aclara que las métricas KPI solo consideran reparaciones entregadas --}}
+<div class="flex items-center gap-2 mb-4 text-gray-400">
+    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <p class="text-xs">
+        Las métricas reflejan únicamente reparaciones <span class="font-medium text-gray-500">entregadas</span> dentro del período seleccionado.
+    </p>
+</div>
+
 <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
 
     {{-- ── KPI 1: Ingresos del periodo ── --}}
@@ -229,15 +241,15 @@
                 <p class="text-xs text-gray-400 mt-0.5">Ene–Dic · reparaciones entregadas</p>
             </div>
             <div class="flex items-center gap-3 shrink-0">
-                {{-- Selector de año con tap target mínimo de 44px --}}
-                @php $anioActual = now()->year @endphp
+                {{-- Selector de año fijo 2026–2029 --}}
                 <select id="select-anio-barras"
                         class="text-sm border border-gray-200 rounded-xl px-3 bg-white text-gray-700
                                focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400
                                cursor-pointer min-h-[44px] transition-all duration-300 shadow-sm">
-                    @for ($y = $anioActual; $y >= $anioActual - 4; $y--)
-                        <option value="{{ $y }}">{{ $y }}</option>
-                    @endfor
+                    <option value="2026" selected>2026</option>
+                    <option value="2027">2027</option>
+                    <option value="2028">2028</option>
+                    <option value="2029">2029</option>
                 </select>
                 <div class="flex items-center gap-1.5 text-xs">
                     <div class="w-2.5 h-2.5 rounded-sm bg-indigo-500 shrink-0"></div>
@@ -251,6 +263,13 @@
         </div>
         <div class="h-64" id="barras-canvas-wrap">
             <canvas id="chart-ingresos"></canvas>
+        </div>
+        <div id="barras-empty" class="hidden items-center justify-center h-64 flex-col gap-2">
+            <svg class="w-8 h-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <p class="text-sm text-gray-400 font-medium">Sin datos para este año</p>
         </div>
     </div>
 
@@ -646,13 +665,15 @@
 
     // ── Selector de año: actualiza la gráfica de barras vía AJAX ──
     document.getElementById('select-anio-barras').addEventListener('change', async function () {
-        const select   = this;
-        const loading  = document.getElementById('barras-loading');
+        const select     = this;
+        const loading    = document.getElementById('barras-loading');
         const canvasWrap = document.getElementById('barras-canvas-wrap');
+        const empty      = document.getElementById('barras-empty');
 
         select.disabled = true;
         loading.classList.replace('hidden', 'flex');
         canvasWrap.classList.add('hidden');
+        empty.classList.add('hidden');
 
         try {
             const res  = await fetch(urlIngresosAnuales + '?anio=' + select.value, {
@@ -660,16 +681,23 @@
             });
             const data = await res.json();
 
-            chartIngresos.data.labels             = data.labels;
-            chartIngresos.data.datasets[0].data   = data.datos;
-            chartIngresos.data.datasets[1].data   = new Array(12).fill(0);
+            chartIngresos.data.labels           = data.labels;
+            chartIngresos.data.datasets[0].data = data.datos;
+            chartIngresos.data.datasets[1].data = new Array(12).fill(0);
             chartIngresos.update('active');
+
+            const sinDatos = data.datos.every(v => v === 0);
+            if (sinDatos) {
+                empty.classList.replace('hidden', 'flex');
+            } else {
+                canvasWrap.classList.remove('hidden');
+            }
         } catch (e) {
             console.error('Error al cargar ingresos anuales:', e);
+            canvasWrap.classList.remove('hidden');
         } finally {
             select.disabled = false;
             loading.classList.replace('flex', 'hidden');
-            canvasWrap.classList.remove('hidden');
         }
     });
 

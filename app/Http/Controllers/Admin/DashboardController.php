@@ -286,7 +286,7 @@ class DashboardController extends Controller
      */
     public function ingresosAnuales(Request $request): \Illuminate\Http\JsonResponse
     {
-        $anio = max(2020, min((int) $request->input('anio', now()->year), (int) now()->year));
+        $anio = max(2026, min((int) $request->input('anio', 2026), 2029));
         return response()->json($this->obtenerIngresosAnioCompleto($anio));
     }
 
