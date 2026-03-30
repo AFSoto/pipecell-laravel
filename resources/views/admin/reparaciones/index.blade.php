@@ -85,7 +85,7 @@
 {{-- FILTROS — form GET unificado   --}}
 {{-- ============================== --}}
 @php
-    $fEstado  = request('estado');
+    $fEstado  = request('estado', 'en_proceso');
     $fPeriodo = request('periodo', 'mes');
     $fBuscar  = request('buscar');
     $fDesde   = request('desde');
@@ -867,7 +867,8 @@ function actualizarFilaEdicion(datos) {
                 // Si el usuario está filtrado (ej: ?estado=en_proceso) y acaba de
                 // cambiar la fila a otro estado, esa fila ya no pertenece al filtro
                 // activo → la animamos para que desaparezca sin recargar la página.
-                const filtroActivo = new URLSearchParams(window.location.search).get('estado');
+                const filtroActivo = document.getElementById('select-estado')?.value
+                    || new URLSearchParams(window.location.search).get('estado');
 
                 // Solo actuamos si hay un filtro específico Y el nuevo estado es diferente.
                 // Si no hay filtro (null) o es "todos", dejamos la fila como está.

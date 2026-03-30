@@ -36,22 +36,9 @@ class ReparacionController extends Controller
         // en_proceso y arreglado siempre tienen pocos registros — sin filtro de fecha
         $sinFiltroFecha = in_array($estado, ['en_proceso', 'arreglado']);
 
+
         $query = Reparacion::with(['caja', 'abonos'])
             ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
-            ->when(! $sinFiltroFecha, function ($q) use ($periodo, $desde, $hasta) {
-                match ($periodo) {
-                    'hoy'          => $q->whereDate('created_at', today()),
-                    'semana'       => $q->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                    'mes_pasado'   => $q->whereMonth('created_at', now()->subMonth()->month)
-                        ->whereYear('created_at', now()->subMonth()->year),
-                    'trimestre'    => $q->whereBetween('created_at', [now()->subMonths(3)->startOfDay(), now()->endOfDay()]),
-                    'anio'         => $q->whereYear('created_at', now()->year),
-                    'personalizado' => ($desde && $hasta)
-                        ? $q->whereBetween('created_at', [$desde, $hasta . ' 23:59:59'])
-                        : $q->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year),
-                    default        => $q->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year),
-                };
-            })
             ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {
                     $sub->where('nombre_cliente', 'like', "%{$buscar}%")
@@ -61,6 +48,28 @@ class ReparacionController extends Controller
                 });
             })
             ->latest();
+
+        if (! $sinFiltroFecha) {
+            if ($periodo === 'hoy') {
+                $query->whereDate('created_at', today());
+            } elseif ($periodo === 'semana') {
+                $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]);
+            }  elseif ($periodo === 'mes_pasado') {
+    $mesAnterior = now()->subMonthNoOverflow();
+    $query->whereMonth('created_at', $mesAnterior->month)
+          ->whereYear('created_at', $mesAnterior->year);
+            } elseif ($periodo === 'trimestre') {
+                $query->whereBetween('created_at', [now()->subMonths(3)->startOfDay(), now()->endOfDay()]);
+            } elseif ($periodo === 'anio') {
+                $query->whereYear('created_at', now()->year);
+            } elseif ($periodo === 'personalizado' && $desde && $hasta) {
+                $query->whereBetween('created_at', [$desde, $hasta . ' 23:59:59']);
+            } else {
+                $query->whereMonth('created_at', now()->month)
+                    ->whereYear('created_at', now()->year);
+            }
+        }
+
 
         $reparaciones = strlen($buscar ?? '') >= 2 ? $query->get() : $query->paginate(10);
 
