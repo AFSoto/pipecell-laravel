@@ -704,38 +704,47 @@
     // ════════════════════════════════════════════════════════════
     // GRÁFICA 2: Doughnut — Distribución por estado
     // ════════════════════════════════════════════════════════════
-    new Chart(document.getElementById('chart-estados'), {
-        type: 'doughnut',
-        data: {
-            labels: ['En proceso', 'Arreglados', 'Entregados'],
-            datasets: [{
-                data: [datosEstados.en_proceso, datosEstados.arreglado, datosEstados.entregado],
-                backgroundColor: [
-                    'rgba(251, 191, 36, 0.9)',    // Amber — en proceso
-                    'rgba(99, 102, 241, 0.9)',     // Indigo — arreglado
-                    'rgba(16, 185, 129, 0.9)',     // Emerald — entregado
-                ],
-                hoverBackgroundColor: [
-                    'rgba(251, 191, 36, 1)',
-                    'rgba(99, 102, 241, 1)',
-                    'rgba(16, 185, 129, 1)',
-                ],
-                borderWidth: 2,
-                borderColor: '#ffffff',
-                spacing: 3,
-                borderRadius: 5,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '74%',
-            plugins: {
-                legend: { display: false },
-                tooltip: { ...tooltipBase }
+
+    // spacing y borderRadius causan muescas visibles cuando solo 1 segmento tiene datos:
+    // el offset angular de spacing se aplica íntegro al único arco, creando dos cortes
+    // en lo que debería ser un anillo continuo. Se anulan con ≤1 segmento activo.
+    {
+        const valsEstados = [datosEstados.en_proceso, datosEstados.arreglado, datosEstados.entregado];
+        const segmentosActivos = valsEstados.filter(v => v > 0).length;
+
+        new Chart(document.getElementById('chart-estados'), {
+            type: 'doughnut',
+            data: {
+                labels: ['En proceso', 'Arreglados', 'Entregados'],
+                datasets: [{
+                    data: valsEstados,
+                    backgroundColor: [
+                        'rgba(251, 191, 36, 0.9)',
+                        'rgba(99, 102, 241, 0.9)',
+                        'rgba(16, 185, 129, 0.9)',
+                    ],
+                    hoverBackgroundColor: [
+                        'rgba(251, 191, 36, 1)',
+                        'rgba(99, 102, 241, 1)',
+                        'rgba(16, 185, 129, 1)',
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                    spacing:      segmentosActivos >= 2 ? 1 : 0,
+                    borderRadius: segmentosActivos >= 2 ? 5 : 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '74%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { ...tooltipBase }
+                }
             }
-        }
-    });
+        });
+    }
 
     // ════════════════════════════════════════════════════════════
     // GRÁFICA 3 (NUEVA): Área con gradiente — Actividad diaria
