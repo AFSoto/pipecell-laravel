@@ -91,10 +91,10 @@ class DashboardController extends Controller
 
         // ── 7. TOP 5 MARCAS MÁS REPARADAS ──
         // Agregación con GROUP BY — eficiente aunque haya miles de registros
-        $topMarcas = Reparacion::select('marca', DB::raw('COUNT(*) as total'))
+        $topMarcas = Reparacion::select(DB::raw('UPPER(TRIM(marca)) as marca'), DB::raw('COUNT(*) as total'))
             ->whereNotNull('marca')
-            ->where('marca', '!=', '')
-            ->groupBy('marca')
+            ->whereRaw("TRIM(marca) != ''")
+            ->groupBy(DB::raw('UPPER(TRIM(marca))'))
             ->orderByDesc('total')
             ->take(5)
             ->get();

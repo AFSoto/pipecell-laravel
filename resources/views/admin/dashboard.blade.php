@@ -822,6 +822,21 @@
     // ════════════════════════════════════════════════════════════
     // GRÁFICA 4 (NUEVA): Barras horizontales — Top marcas
     // ════════════════════════════════════════════════════════════
+    {
+        // Máximo real del dataset (0 si está vacío para evitar Math.max(...[]) = -Infinity)
+        const maxMarcas = datosMarcas.datos.length > 0 ? Math.max(...datosMarcas.datos) : 0;
+
+        // stepSize dinámico según rango del valor máximo
+        const stepMarcas = maxMarcas <= 10  ? 1
+                         : maxMarcas <= 50  ? 5
+                         : maxMarcas <= 200 ? 25
+                         : maxMarcas <= 500 ? 50
+                         : maxMarcas <= 1000 ? 100
+                         : 250;
+
+        // Eje X con 20 % de margen sobre el máximo para que ninguna barra llegue al borde
+        const maxEjeMarcas = Math.ceil(maxMarcas * 1.2) || 5;
+
     new Chart(document.getElementById('chart-marcas'), {
         type: 'bar',
         data: {
@@ -869,8 +884,9 @@
                         color: '#94a3b8',
                         font: { size: 10 },
                         precision: 0,
-                        stepSize: 1,
-                    }
+                        stepSize: stepMarcas,
+                    },
+                    max: maxEjeMarcas,
                 },
                 y: {
                     grid: { display: false },
@@ -883,6 +899,7 @@
             }
         }
     });
+    }
 
     // ─── Toggle de campos de fecha personalizado ─────────────────
     const selectPeriodo       = document.getElementById('select-periodo');
