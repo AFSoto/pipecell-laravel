@@ -73,6 +73,10 @@
         </div>
 
     </form>
+    {{-- Indicador de alcance del filtro --}}
+    <p class="text-[11px] text-indigo-400/80 mt-1.5 text-right hidden sm:block select-none">
+        ↑ Afecta: métricas KPI · distribución de estados
+    </p>
 </div>
 
 {{-- ============================================================ --}}
@@ -157,7 +161,7 @@
             @endif
         </div>
         <p class="text-2xl font-bold text-gray-900 tracking-tight">
-            ${{ number_format($metricas->ganancia, 0, ',', '.') }}
+            ${{ number_format($metricas->ganancia_neta, 0, ',', '.') }}
         </p>
         <p class="text-sm text-gray-500 mt-1 font-medium">Ganancia neta</p>
     </div>
@@ -196,11 +200,11 @@
                 </svg>
             </div>
             <span class="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
-                En taller
+                En Proceso
             </span>
         </div>
         <p class="text-2xl font-bold text-gray-900 tracking-tight">{{ $reparacionesActivas }}</p>
-        <p class="text-sm text-gray-500 mt-1 font-medium">Reparaciones activas</p>
+        <p class="text-sm text-gray-500 mt-1 font-medium">En proceso</p>
     </div>
 
 </div>
@@ -210,27 +214,42 @@
 {{-- ============================================================ --}}
 <div class="grid lg:grid-cols-3 gap-5 mb-6">
 
-    {{-- ── Gráfica de barras: Ingresos de los últimos 12 meses ── --}}
+    {{-- ── Gráfica de barras: Ingresos mensuales (año completo, independiente) ── --}}
     <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6
                 hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
-        <div class="flex items-start justify-between mb-6">
-            <div>
-                <h3 class="font-semibold text-gray-900">{{ $ingresosPorMes['titulo'] }}</h3>
-                <p class="text-xs text-gray-400 mt-0.5">{{ $ingresosPorMes['subtitulo'] }}</p>
-            </div>
-            <div class="flex items-center gap-4 text-xs">
-                <div class="flex items-center gap-1.5">
-                    <div class="w-2.5 h-2.5 rounded-sm bg-blue-500"></div>
-                    <span class="text-gray-500 font-medium">Reparaciones</span>
+        <div class="flex items-start justify-between mb-6 gap-3">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <h3 class="font-semibold text-gray-900">Ingresos mensuales</h3>
+                    <span class="inline-flex items-center text-[10px] font-semibold text-slate-500
+                                 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full tracking-wide shrink-0">
+                        Vista independiente
+                    </span>
                 </div>
-                <div class="flex items-center gap-1.5">
-                    <div class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div>
-                    <span class="text-gray-400 font-medium">Ventas</span>
-                    <span class="text-[10px] text-gray-300 italic">próx.</span>
+                <p class="text-xs text-gray-400 mt-0.5">Ene–Dic · reparaciones entregadas</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                {{-- Selector de año con tap target mínimo de 44px --}}
+                @php $anioActual = now()->year @endphp
+                <select id="select-anio-barras"
+                        class="text-sm border border-gray-200 rounded-xl px-3 bg-white text-gray-700
+                               focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400
+                               cursor-pointer min-h-[44px] transition-all duration-300 shadow-sm">
+                    @for ($y = $anioActual; $y >= $anioActual - 4; $y--)
+                        <option value="{{ $y }}">{{ $y }}</option>
+                    @endfor
+                </select>
+                <div class="flex items-center gap-1.5 text-xs">
+                    <div class="w-2.5 h-2.5 rounded-sm bg-indigo-500 shrink-0"></div>
+                    <span class="text-gray-500 font-medium">Reparaciones</span>
                 </div>
             </div>
         </div>
-        <div class="h-64">
+        {{-- Indicador de carga --}}
+        <div id="barras-loading" class="hidden items-center justify-center h-64">
+            <div class="w-6 h-6 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin"></div>
+        </div>
+        <div class="h-64" id="barras-canvas-wrap">
             <canvas id="chart-ingresos"></canvas>
         </div>
     </div>
@@ -519,11 +538,11 @@
 
 <script>
     // ─── Datos del servidor → JavaScript ────────────────────────
-    // La directiva de serialización de Blade produce JSON válido y seguro
-    const datosIngresos  = @json($ingresosPorMes);
+    const datosIngresos  = @json($ingresosAnuales);   // Año actual Jan-Dic (independiente del filtro)
     const datosEstados   = @json($contadores);
     const datosDiarios   = @json($reparacionesDiarias);
     const datosMarcas    = @json($topMarcasChart);
+    const urlIngresosAnuales = "{{ route('admin.dashboard.ingresos-anuales') }}";
 
     // ─── Helpers reutilizables ───────────────────────────────────
 
@@ -556,9 +575,9 @@
     };
 
     // ════════════════════════════════════════════════════════════
-    // GRÁFICA 1: Barras agrupadas — Ingresos mensuales
+    // GRÁFICA 1: Barras — Ingresos anuales (independiente del filtro)
     // ════════════════════════════════════════════════════════════
-    new Chart(document.getElementById('chart-ingresos'), {
+    const chartIngresos = new Chart(document.getElementById('chart-ingresos'), {
         type: 'bar',
         data: {
             labels: datosIngresos.labels,
@@ -622,6 +641,35 @@
                     }
                 }
             }
+        }
+    });
+
+    // ── Selector de año: actualiza la gráfica de barras vía AJAX ──
+    document.getElementById('select-anio-barras').addEventListener('change', async function () {
+        const select   = this;
+        const loading  = document.getElementById('barras-loading');
+        const canvasWrap = document.getElementById('barras-canvas-wrap');
+
+        select.disabled = true;
+        loading.classList.replace('hidden', 'flex');
+        canvasWrap.classList.add('hidden');
+
+        try {
+            const res  = await fetch(urlIngresosAnuales + '?anio=' + select.value, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+
+            chartIngresos.data.labels             = data.labels;
+            chartIngresos.data.datasets[0].data   = data.datos;
+            chartIngresos.data.datasets[1].data   = new Array(12).fill(0);
+            chartIngresos.update('active');
+        } catch (e) {
+            console.error('Error al cargar ingresos anuales:', e);
+        } finally {
+            select.disabled = false;
+            loading.classList.replace('flex', 'hidden');
+            canvasWrap.classList.remove('hidden');
         }
     });
 

@@ -51,11 +51,8 @@ class DashboardController extends Controller
 
         // ── 2. REPARACIONES ACTIVAS ──
         // Sin filtro de fecha — siempre refleja el estado actual del taller
-        // Se cuentan tanto las "en proceso" como las "arregladas" (listas pero no entregadas)
-        $reparacionesActivas = Reparacion::whereIn('estado', [
-            EstadoReparacion::EnProceso,
-            EstadoReparacion::Arreglado,
-        ])->count();
+        // Se cuentan solo las que estan en proceso para un vistaso rapido
+        $reparacionesActivas = Reparacion::where('estado', EstadoReparacion::EnProceso)->count();
 
         // ── 3. CONTADORES POR ESTADO (para la gráfica doughnut) ──
         // Aplicamos el mismo filtro de periodo que las tarjetas KPI, así el doughnut
@@ -76,8 +73,10 @@ class DashboardController extends Controller
             'entregado'  => (int) ($contadoresBD['entregado'] ?? 0),
         ];
 
-        // ── 4. INGRESOS PARA LA GRÁFICA DE BARRAS (granularidad según periodo) ──
-        $ingresosPorMes = $this->obtenerIngresosPorMes($periodo, $desde, $hasta);
+        // ── 4. INGRESOS ANUALES PARA LA GRÁFICA DE BARRAS (independiente del filtro) ──
+        // La gráfica de barras siempre muestra Ene-Dic del año actual.
+        // El año se puede cambiar por el usuario vía AJAX sin recargar la página.
+        $ingresosAnuales = $this->obtenerIngresosAnioCompleto((int) now()->year);
 
         // ── 5. ESTADO DE CAJAS AGRUPADAS POR GRUPO ──
         // Incluye el nombre del cliente si la caja está ocupada
@@ -103,7 +102,7 @@ class DashboardController extends Controller
         // Arrays separados de labels/datos listos para Chart.js (horizontal bar)
         $topMarcasChart = [
             'labels' => $topMarcas->pluck('marca')->toArray(),
-            'datos'  => $topMarcas->pluck('total')->map(fn ($v) => (int) $v)->toArray(),
+            'datos'  => $topMarcas->pluck('total')->map(fn($v) => (int) $v)->toArray(),
         ];
 
         // ── 8. ACTIVIDAD DIARIA (últimos 30 días para la gráfica de área) ──
@@ -113,13 +112,20 @@ class DashboardController extends Controller
         $estadisticasCobro = $this->obtenerEstadisticasCobro();
 
         return view('admin.dashboard', compact(
-            'periodo', 'desde', 'hasta',
-            'metricas', 'cambioPorcentaje',
-            'reparacionesActivas', 'contadores',
-            'ingresosPorMes', 'cajasPorGrupo',
+            'periodo',
+            'desde',
+            'hasta',
+            'metricas',
+            'cambioPorcentaje',
+            'reparacionesActivas',
+            'contadores',
+            'ingresosAnuales',
+            'cajasPorGrupo',
             'ultimasReparaciones',
-            'topMarcas', 'topMarcasChart',
-            'reparacionesDiarias', 'estadisticasCobro'
+            'topMarcas',
+            'topMarcasChart',
+            'reparacionesDiarias',
+            'estadisticasCobro'
         ));
     }
 
@@ -156,9 +162,9 @@ class DashboardController extends Controller
                 break;
 
             case 'mes_pasado':
-                // Mes anterior completo (ej: si estamos en marzo, filtra febrero)
-                $query->whereMonth('created_at', now()->subMonth()->month)
-                      ->whereYear('created_at', now()->subMonth()->year);
+                $mesAnterior = now()->subMonthNoOverflow();
+                $query->whereMonth('created_at', $mesAnterior->month)
+                    ->whereYear('created_at', $mesAnterior->year);
                 break;
 
             case 'trimestre':
@@ -181,14 +187,14 @@ class DashboardController extends Controller
                     $query->whereBetween('created_at', [$desde, $hasta . ' 23:59:59']);
                 } else {
                     $query->whereMonth('created_at', now()->month)
-                          ->whereYear('created_at', now()->year);
+                        ->whereYear('created_at', now()->year);
                 }
                 break;
 
             default: // 'mes' — default de la aplicación
                 // Mes en curso
                 $query->whereMonth('created_at', now()->month)
-                      ->whereYear('created_at', now()->year);
+                    ->whereYear('created_at', now()->year);
         }
     }
 
@@ -198,20 +204,24 @@ class DashboardController extends Controller
      *
      * Usar COALESCE evita que SUM retorne NULL cuando no hay registros,
      * lo que causaría errores en el formateo numérico de la vista.
+     *
+     * IMPORTANTE: el alias SQL se llama 'ganancia_neta' (no 'ganancia') para evitar
+     * que Eloquent intercepte la propiedad con el accessor ganancia() del modelo,
+     * que devolvería 0 porque valor_total y costo_repuestos no son seleccionados aquí.
      */
     private function obtenerMetricasPeriodo(string $periodo, ?string $desde, ?string $hasta): object
     {
         $query = Reparacion::entregadas()
             ->selectRaw('
                 COALESCE(SUM(valor_total), 0)                                              AS ingresos,
-                COALESCE(SUM(valor_total) - SUM(COALESCE(costo_repuestos, 0)), 0)          AS ganancia,
+                COALESCE(SUM(valor_total) - SUM(COALESCE(costo_repuestos, 0)), 0)          AS ganancia_neta,
                 COUNT(*)                                                                    AS completadas
             ');
 
         // Aplicamos el mismo filtro de periodo que se usa en reparaciones
         $this->aplicarFiltroPeriodo($query, $periodo, $desde, $hasta);
 
-        // ->first() retorna un stdObject con las propiedades ingresos, ganancia, completadas
+        // ->first() retorna un stdObject con las propiedades ingresos, ganancia_neta, completadas
         return $query->first();
     }
 
@@ -233,17 +243,19 @@ class DashboardController extends Controller
             return ['ingresos' => null, 'ganancia' => null];
         }
 
-        // Construir la consulta del periodo anterior
+        // Construir la consulta del periodo anterior.
+        // Se usa el alias 'ganancia_neta' para evitar el conflicto con el accessor del modelo.
         $queryAnterior = Reparacion::entregadas()
             ->selectRaw('
                 COALESCE(SUM(valor_total), 0)                                     AS ingresos,
-                COALESCE(SUM(valor_total) - SUM(COALESCE(costo_repuestos, 0)), 0) AS ganancia
+                COALESCE(SUM(valor_total) - SUM(COALESCE(costo_repuestos, 0)), 0) AS ganancia_neta
             ');
 
         if ($periodo === 'mes') {
             // Comparar con el mes pasado
-            $queryAnterior->whereMonth('created_at', now()->subMonth()->month)
-                          ->whereYear('created_at', now()->subMonth()->year);
+            $mesAnterior = now()->subMonthNoOverflow();
+            $queryAnterior->whereMonth('created_at', $mesAnterior->month)
+                ->whereYear('created_at', $mesAnterior->year);
         } else {
             // Comparar con el año pasado
             $queryAnterior->whereYear('created_at', now()->subYear()->year);
@@ -261,173 +273,44 @@ class DashboardController extends Controller
         };
 
         return [
-            'ingresos' => $calcPct((float) $metricas->ingresos, (float) $anterior->ingresos),
-            'ganancia' => $calcPct((float) $metricas->ganancia, (float) $anterior->ganancia),
+            'ingresos' => $calcPct((float) $metricas->ingresos,     (float) $anterior->ingresos),
+            'ganancia' => $calcPct((float) $metricas->ganancia_neta, (float) $anterior->ganancia_neta),
         ];
     }
 
     /**
-     * Obtiene los datos de ingresos para la gráfica de barras.
-     * La granularidad (diaria, mensual) y el rango cambian según el periodo:
+     * Endpoint AJAX: devuelve ingresos Ene-Dic para el año solicitado.
+     * Usado por el selector de año de la gráfica de barras del dashboard.
      *
-     *   hoy / semana    → últimos 30 días, agrupado por DÍA
-     *   mes_pasado      → últimos 13 meses, agrupado por MES (incluye mes anterior completo)
-     *   trimestre       → últimos 6 meses, agrupado por MES
-     *   anio            → enero a diciembre del año actual, agrupado por MES
-     *   personalizado   → últimos 12 meses, agrupado por MES
-     *   mes (default)   → últimos 12 meses, agrupado por MES
-     *
-     * Retorna:
-     *   labels   → etiquetas del eje X
-     *   datos    → valores de ingresos paralelos a labels
-     *   titulo   → título dinámico para la cabecera del card
-     *   subtitulo → subtítulo dinámico
+     * GET /admin/dashboard/ingresos-anuales?anio=2026
      */
-    private function obtenerIngresosPorMes(string $periodo, ?string $desde, ?string $hasta): array
+    public function ingresosAnuales(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $anio = max(2020, min((int) $request->input('anio', now()->year), (int) now()->year));
+        return response()->json($this->obtenerIngresosAnioCompleto($anio));
+    }
+
+    /**
+     * Devuelve ingresos de reparaciones entregadas para cada mes de un año completo.
+     * Retorna siempre 12 valores (Ene-Dic), con 0 en meses sin ingresos.
+     */
+    private function obtenerIngresosAnioCompleto(int $anio): array
     {
         $nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-        // ── Caso 1: hoy / semana → granularidad DIARIA (últimos 30 días) ──────
-        if (in_array($periodo, ['hoy', 'semana'])) {
-            $resultados = Reparacion::entregadas()
-                ->where('created_at', '>=', now()->subDays(29)->startOfDay())
-                ->selectRaw('DATE(created_at) AS fecha, SUM(valor_total) AS total')
-                ->groupBy('fecha')
-                ->orderBy('fecha')
-                ->get()
-                ->keyBy('fecha');
-
-            $labels = [];
-            $datos  = [];
-            for ($i = 29; $i >= 0; $i--) {
-                $fecha    = now()->subDays($i);
-                $fechaKey = $fecha->format('Y-m-d');
-                $labels[] = $fecha->day . ' ' . $nombresMeses[$fecha->month - 1];
-                $datos[]  = isset($resultados[$fechaKey]) ? (float) $resultados[$fechaKey]->total : 0;
-            }
-
-            return [
-                'labels'    => $labels,
-                'datos'     => $datos,
-                'titulo'    => 'Ingresos diarios',
-                'subtitulo' => 'Últimos 30 días · reparaciones entregadas',
-            ];
-        }
-
-        // ── Caso 2: anio → enero a diciembre del año actual ──────────────────
-        if ($periodo === 'anio') {
-            $resultados = Reparacion::entregadas()
-                ->whereYear('created_at', now()->year)
-                ->selectRaw('MONTH(created_at) AS mes, SUM(valor_total) AS total')
-                ->groupBy('mes')
-                ->get()
-                ->keyBy('mes');
-
-            $datos = [];
-            for ($m = 1; $m <= 12; $m++) {
-                $datos[] = isset($resultados[$m]) ? (float) $resultados[$m]->total : 0;
-            }
-
-            return [
-                'labels'    => $nombresMeses,   // siempre Ene-Dic
-                'datos'     => $datos,
-                'titulo'    => 'Ingresos mensuales',
-                'subtitulo' => now()->year . ' · reparaciones entregadas',
-            ];
-        }
-
-        // ── Caso 3: trimestre → últimos 6 meses para tener contexto ──────────
-        if ($periodo === 'trimestre') {
-            $mesesAtras = 5; // 6 barras: mes actual + 5 anteriores
-            $resultados = Reparacion::entregadas()
-                ->where('created_at', '>=', now()->subMonths($mesesAtras)->startOfMonth())
-                ->selectRaw('YEAR(created_at) AS anio, MONTH(created_at) AS mes, SUM(valor_total) AS total')
-                ->groupBy('anio', 'mes')
-                ->orderBy('anio')
-                ->orderBy('mes')
-                ->get()
-                ->keyBy(fn ($r) => $r->anio . '-' . str_pad((string) $r->mes, 2, '0', STR_PAD_LEFT));
-
-            $labels = [];
-            $datos  = [];
-            for ($i = $mesesAtras; $i >= 0; $i--) {
-                $fecha    = now()->subMonths($i)->startOfMonth();
-                $key      = $fecha->format('Y') . '-' . str_pad((string) $fecha->month, 2, '0', STR_PAD_LEFT);
-                $labels[] = $nombresMeses[$fecha->month - 1];
-                $datos[]  = isset($resultados[$key]) ? (float) $resultados[$key]->total : 0;
-            }
-
-            return [
-                'labels'    => $labels,
-                'datos'     => $datos,
-                'titulo'    => 'Ingresos mensuales',
-                'subtitulo' => 'Últimos 6 meses · reparaciones entregadas',
-            ];
-        }
-
-        // ── Caso 4: personalizado → mensual dentro del rango elegido ────────────
-        if ($periodo === 'personalizado' && $desde && $hasta) {
-            $fechaInicio = \Carbon\Carbon::parse($desde)->startOfMonth();
-            $fechaFin    = \Carbon\Carbon::parse($hasta)->endOfMonth();
-
-            $resultados = Reparacion::entregadas()
-                ->whereBetween('created_at', [$desde, $hasta . ' 23:59:59'])
-                ->selectRaw('YEAR(created_at) AS anio, MONTH(created_at) AS mes, SUM(valor_total) AS total')
-                ->groupBy('anio', 'mes')
-                ->orderBy('anio')
-                ->orderBy('mes')
-                ->get()
-                ->keyBy(fn ($r) => $r->anio . '-' . str_pad((string) $r->mes, 2, '0', STR_PAD_LEFT));
-
-            $labels  = [];
-            $datos   = [];
-            $current = $fechaInicio->copy();
-
-            // Iterar mes a mes dentro del rango personalizado
-            while ($current->lte($fechaFin)) {
-                $key      = $current->format('Y') . '-' . str_pad((string) $current->month, 2, '0', STR_PAD_LEFT);
-                $labels[] = $nombresMeses[$current->month - 1] . ' ' . $current->format('y');
-                $datos[]  = isset($resultados[$key]) ? (float) $resultados[$key]->total : 0;
-                $current->addMonth();
-            }
-
-            return [
-                'labels'    => $labels,
-                'datos'     => $datos,
-                'titulo'    => 'Ingresos mensuales',
-                'subtitulo' => $desde . ' al ' . $hasta,
-            ];
-        }
-
-        // ── Caso 5 (default): mes, mes_pasado → últimos 12 meses ─────────────
         $resultados = Reparacion::entregadas()
-            ->where('created_at', '>=', now()->subMonths(11)->startOfMonth())
-            ->selectRaw('
-                YEAR(created_at)  AS anio,
-                MONTH(created_at) AS mes,
-                SUM(valor_total)  AS total
-            ')
-            ->groupBy('anio', 'mes')
-            ->orderBy('anio')
-            ->orderBy('mes')
+            ->whereYear('created_at', $anio)
+            ->selectRaw('MONTH(created_at) AS mes, SUM(valor_total) AS total')
+            ->groupBy('mes')
             ->get()
-            ->keyBy(fn ($r) => $r->anio . '-' . str_pad((string) $r->mes, 2, '0', STR_PAD_LEFT));
+            ->keyBy('mes');
 
-        $labels = [];
-        $datos  = [];
-        for ($i = 11; $i >= 0; $i--) {
-            $fecha    = now()->subMonths($i)->startOfMonth();
-            $key      = $fecha->format('Y') . '-' . str_pad((string) $fecha->month, 2, '0', STR_PAD_LEFT);
-            $labels[] = $nombresMeses[$fecha->month - 1];
-            $datos[]  = isset($resultados[$key]) ? (float) $resultados[$key]->total : 0;
+        $datos = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $datos[] = isset($resultados[$m]) ? (float) $resultados[$m]->total : 0;
         }
 
-        return [
-            'labels'    => $labels,
-            'datos'     => $datos,
-            'titulo'    => 'Ingresos mensuales',
-            'subtitulo' => 'Últimos 12 meses · reparaciones entregadas',
-        ];
+        return ['labels' => $nombresMeses, 'datos' => $datos];
     }
 
     /**
@@ -447,9 +330,9 @@ class DashboardController extends Controller
         // Obtener solo las columnas necesarias de reparaciones activas
         // e indexarlas por caja_id para búsqueda O(1) al mapear las cajas
         $reparacionesActivas = Reparacion::whereIn('estado', [
-                EstadoReparacion::EnProceso,
-                EstadoReparacion::Arreglado,
-            ])
+            EstadoReparacion::EnProceso,
+            EstadoReparacion::Arreglado,
+        ])
             ->select('caja_id', 'nombre_cliente')
             ->get()
             ->keyBy('caja_id'); // clave = caja_id, valor = {caja_id, nombre_cliente}
@@ -490,9 +373,9 @@ class DashboardController extends Controller
     {
         // Una sola consulta con GROUP BY DATE para los últimos 30 días
         $resultados = Reparacion::select(
-                DB::raw('DATE(created_at) as fecha'),
-                DB::raw('COUNT(*) as total')
-            )
+            DB::raw('DATE(created_at) as fecha'),
+            DB::raw('COUNT(*) as total')
+        )
             ->where('created_at', '>=', now()->subDays(29)->startOfDay())
             ->groupBy('fecha')
             ->orderBy('fecha')

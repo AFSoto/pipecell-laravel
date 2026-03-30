@@ -40,6 +40,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
 
     // Dashboard — controlador dedicado con datos reales de la BD
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/ingresos-anuales', [DashboardController::class, 'ingresosAnuales'])->name('dashboard.ingresos-anuales');
 
     // ── Reparaciones ──
     Route::get('/reparaciones', [ReparacionController::class, 'index'])
