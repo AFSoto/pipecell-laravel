@@ -35,13 +35,23 @@
         <h2 class="text-2xl font-bold text-gray-900">Reparaciones</h2>
         <p class="text-gray-500 mt-1">Gestiona las reparaciones del local</p>
     </div>
-    <button onclick="document.getElementById('modal-nueva').classList.remove('hidden')"
-            class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition shadow-sm shadow-blue-600/20 ">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
-        Nueva reparación
-    </button>
+    <div class="flex items-center gap-3">
+        <button onclick="document.getElementById('modal-nueva-caja').classList.remove('hidden')"
+                class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition shadow-sm shadow-emerald-600/20">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16"/>
+            </svg>
+            Nueva caja
+        </button>
+        <button onclick="document.getElementById('modal-nueva').classList.remove('hidden')"
+                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition shadow-sm shadow-blue-600/20">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Nueva reparación
+        </button>
+    </div>
 </div>
 
 {{-- Tarjetas de resumen — totales reales por estado (no filtrados) --}}
@@ -479,11 +489,11 @@
                 </div>
             </div>
 
-            {{-- Errores --}}
-            @if ($errors->any())
+            {{-- Errores del formulario de reparación (bag 'default') --}}
+            @if ($errors->getBag('default')->any())
                 <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
                     <ul class="list-disc list-inside space-y-1">
-                        @foreach ($errors->all() as $error)
+                        @foreach ($errors->getBag('default')->all() as $error)
                             <li>{{ $error }}</li>
                         @endforeach
                     </ul>
@@ -499,6 +509,71 @@
                 <button type="submit"
                         class="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm shadow-blue-600/20">
                     Guardar reparación
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+{{-- ============================== --}}
+{{-- MODAL - Nueva Caja              --}}
+{{-- ============================== --}}
+<div id="modal-nueva-caja" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50" onclick="document.getElementById('modal-nueva-caja').classList.add('hidden')"></div>
+
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+
+        <div class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 rounded-t-2xl flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Nueva caja</h3>
+                <p class="text-sm text-gray-500">Registra un espacio físico nuevo</p>
+            </div>
+            <button onclick="document.getElementById('modal-nueva-caja').classList.add('hidden')"
+                    class="p-2 rounded-xl hover:bg-gray-100 transition">
+                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <form method="POST" action="{{ route('admin.cajas.store') }}" class="p-6 space-y-5">
+            @csrf
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Grupo (letra) *</label>
+                    <input type="text" name="grupo" required maxlength="1" placeholder="A"
+                           value="{{ old('grupo') }}"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Número *</label>
+                    <input type="number" name="numero" required min="1" placeholder="1"
+                           value="{{ old('numero') }}"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                </div>
+            </div>
+
+            {{-- Errores del formulario de caja (bag 'caja') --}}
+            @if ($errors->getBag('caja')->any())
+                <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+                    <ul class="list-disc list-inside space-y-1">
+                        @foreach ($errors->getBag('caja')->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <div class="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onclick="document.getElementById('modal-nueva-caja').classList.add('hidden')"
+                        class="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition">
+                    Cancelar
+                </button>
+                <button type="submit"
+                        class="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-sm shadow-emerald-600/20">
+                    Crear caja
                 </button>
             </div>
         </form>
@@ -1156,9 +1231,12 @@ if (btnAbono) {
         }
     }
 
-    // Si hubo errores de validación, abrir el modal
-    @if ($errors->any())
+    // Abrir el modal correcto según el bag de errores de validación
+    @if ($errors->getBag('default')->any())
         document.getElementById('modal-nueva').classList.remove('hidden');
+    @endif
+    @if ($errors->getBag('caja')->any())
+        document.getElementById('modal-nueva-caja').classList.remove('hidden');
     @endif
 </script>
 @endsection
