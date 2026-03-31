@@ -146,15 +146,16 @@
                 {{-- Perfil y logout --}}
                 <div class="px-3 py-4 border-t border-white/10">
 
-                    <div class="flex items-center gap-3 px-3 py-2 mb-2">
-                        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    <a href="{{ route('admin.perfil') }}"
+                       class="flex items-center gap-3 px-3 py-2 mb-1 rounded-xl hover:bg-white/5 transition group">
+                        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0 group-hover:bg-blue-500 transition">
                             {{ strtoupper(substr(auth()->user()->nombre, 0, 2)) }}
                         </div>
                         <div class="sidebar-text flex-1 min-w-0 whitespace-nowrap">
                             <p class="text-white text-sm font-medium truncate">{{ auth()->user()->nombre }}</p>
                             <p class="text-gray-500 text-xs truncate">{{ auth()->user()->role->label() }}</p>
                         </div>
-                    </div>
+                    </a>
 
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf
