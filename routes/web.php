@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ReparacionController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,10 +38,9 @@ Route::post('/logout', [LoginController::class, 'logout'])
 // ── 4. Rutas del panel admin (protegidas) ──
 Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
 
-    // Dashboard
-    Route::get('/dashboard', function () {
-        return view('admin.dashboard');
-    })->name('dashboard');
+    // Dashboard — controlador dedicado con datos reales de la BD
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/ingresos-anuales', [DashboardController::class, 'ingresosAnuales'])->name('dashboard.ingresos-anuales');
 
     // ── Reparaciones ──
     Route::get('/reparaciones', [ReparacionController::class, 'index'])

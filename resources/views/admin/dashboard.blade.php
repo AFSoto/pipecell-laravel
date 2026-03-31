@@ -1,14 +1,24 @@
 {{--
-    Dashboard del panel de administración.
+    Dashboard profesional de PipeCell — versión 2.
 
-    Vista principal con métricas del negocio.
-    Incluye: tarjetas de resumen, gráfica de ingresos por mes,
-    gráfica de reparaciones por estado, filtros de fecha,
-    tabla de últimas reparaciones y estado de cajas.
+    Gráficas incluidas:
+      1. Barras agrupadas  → Ingresos mensuales (últimos 12 meses)
+      2. Doughnut          → Distribución de reparaciones por estado
+      3. Área con gradiente → Actividad diaria (últimos 30 días)   ← NUEVA
+      4. Barras horizontales → Top marcas más reparadas             ← NUEVA
 
-    Chart.js se carga desde CDN para las gráficas.
-    Los datos están hardcodeados por ahora — se conectarán
-    a consultas reales cuando existan reparaciones.
+    Datos recibidos del controlador (DashboardController):
+      $periodo, $desde, $hasta
+      $metricas               → {ingresos, ganancia, completadas}
+      $cambioPorcentaje       → {ingresos: float|null, ganancia: float|null}
+      $reparacionesActivas    → int
+      $contadores             → {en_proceso, arreglado, entregado}
+      $ingresosPorMes         → {labels[], datos[]}
+      $reparacionesDiarias    → {labels[], datos[]}
+      $topMarcasChart         → {labels[], datos[]}
+      $cajasPorGrupo          → Collection agrupada por grupo
+      $ultimasReparaciones    → Collection (5 últimas)
+      $estadisticasCobro      → {totalValor, totalCobrado, pendiente, porcentaje}
 --}}
 @extends('layouts.admin')
 
@@ -16,394 +26,595 @@
 
 @section('content')
 
-{{-- Saludo + Filtros --}}
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+{{-- ============================================================ --}}
+{{-- HEADER: Saludo + Formulario de filtro de periodo             --}}
+{{-- ============================================================ --}}
+<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+
     <div>
         <h2 class="text-2xl font-bold text-gray-900">
-            Hola, {{ auth()->user()->nombre }}
+            Hola, {{ auth()->user()->nombre }} 👋
         </h2>
-        <p class="text-gray-500 mt-1">Resumen general del negocio</p>
+        <p class="text-gray-500 mt-1 text-sm">Panel de control · PipeCell</p>
     </div>
 
-    {{--
-        Filtros de fecha.
-        Por ahora son visuales — cuando conectemos datos reales,
-        estos filtros harán peticiones al servidor.
-    --}}
-    <div class="flex items-center gap-3">
-        {{-- Selector de rango rápido --}}
-        <select id="filter-range" onchange="updateFilter(this.value)"
-                class="text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-            <option value="hoy">Hoy</option>
-            <option value="semana">Esta semana</option>
-            <option value="mes" selected>Este mes</option>
-            <option value="anio">Este año</option>
+    {{-- Filtro GET: el cambio de periodo recarga la página con los datos correctos --}}
+    <form method="GET" action="{{ route('admin.dashboard') }}" id="form-periodo"
+          class="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+
+        <select name="periodo" id="select-periodo"
+                class="text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white text-gray-700
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400
+                       cursor-pointer shadow-sm">
+            <option value="hoy"           @selected($periodo === 'hoy')>Hoy</option>
+            <option value="semana"        @selected($periodo === 'semana')>Esta semana</option>
+            <option value="mes"           @selected($periodo === 'mes')>Este mes</option>
+            <option value="mes_pasado"    @selected($periodo === 'mes_pasado')>Mes pasado</option>
+            <option value="trimestre"     @selected($periodo === 'trimestre')>Último trimestre</option>
+            <option value="anio"          @selected($periodo === 'anio')>Este año</option>
+            <option value="personalizado" @selected($periodo === 'personalizado')>Personalizado</option>
         </select>
 
-        {{-- Selector de tipo --}}
-        <select id="filter-type"
-                class="text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-            <option value="todo">Todo</option>
-            <option value="reparaciones">Reparaciones</option>
-            <option value="ventas">Ventas</option>
-        </select>
-    </div>
+        {{-- Campos de rango: visibles solo con periodo=personalizado --}}
+        <div id="campos-personalizado"
+             class="flex items-center gap-2 {{ $periodo !== 'personalizado' ? 'hidden' : '' }}">
+            <input type="date" name="desde" value="{{ $desde }}"
+                   class="text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white text-gray-700
+                          focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 shadow-sm">
+            <span class="text-gray-400 text-sm">al</span>
+            <input type="date" name="hasta" value="{{ $hasta }}"
+                   class="text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white text-gray-700
+                          focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 shadow-sm">
+            <button type="submit"
+                    class="text-sm bg-blue-600 text-white px-4 py-2.5 rounded-xl hover:bg-blue-700
+                           transition-colors font-medium shadow-sm">
+                Aplicar
+            </button>
+        </div>
+
+    </form>
+    {{-- Indicador de alcance del filtro --}}
+    <p class="text-[11px] text-indigo-400/80 mt-1.5 text-right hidden sm:block select-none">
+        ↑ Afecta: métricas KPI · distribución de estados
+    </p>
 </div>
 
-{{-- ============================== --}}
-{{-- TARJETAS DE RESUMEN             --}}
-{{-- ============================== --}}
-<div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+{{-- ============================================================ --}}
+{{-- FILA 1: TARJETAS KPI (4 métricas principales)               --}}
+{{-- ============================================================ --}}
 
-    {{-- Ingresos totales --}}
-    <div class="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-lg hover:shadow-gray-100/50 transition-all duration-300">
-        <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+{{-- Nota informativa: aclara que las métricas KPI solo consideran reparaciones entregadas --}}
+<div class="flex items-center gap-2 mb-4 text-gray-400">
+    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <p class="text-xs">
+        Las métricas reflejan únicamente reparaciones <span class="font-medium text-gray-500">entregadas</span> dentro del período seleccionado.
+    </p>
+</div>
+
+<div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+
+    {{-- ── KPI 1: Ingresos del periodo ── --}}
+    @php $pctIngresos = $cambioPorcentaje['ingresos']; @endphp
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 relative overflow-hidden
+                hover:shadow-xl hover:shadow-gray-100/80 transition-all duration-300 group">
+        {{-- Línea de acento superior verde --}}
+        <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-emerald-400 to-green-500 rounded-t-2xl"></div>
+        <div class="flex items-start justify-between mb-5">
+            {{-- Ícono con gradiente y sombra de color --}}
+            <div class="w-11 h-11 bg-gradient-to-br from-emerald-400 to-green-600 rounded-xl
+                        flex items-center justify-center shadow-lg shadow-emerald-200/60
+                        group-hover:scale-110 transition-transform duration-300">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
             </div>
-            <div class="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
-                </svg>
-                +12%
-            </div>
+            {{-- Badge de variación (solo cuando hay comparación disponible) --}}
+            @if ($pctIngresos !== null)
+                @if ($pctIngresos >= 0)
+                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700
+                                 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                        </svg>
+                        +{{ $pctIngresos }}%
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-red-600
+                                 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                        </svg>
+                        {{ $pctIngresos }}%
+                    </span>
+                @endif
+            @endif
         </div>
-        <p class="text-3xl font-bold text-gray-900">$2.450.000</p>
-        <p class="text-sm text-gray-500 mt-1">Ingresos del mes</p>
+        <p class="text-2xl font-bold text-gray-900 tracking-tight">
+            ${{ number_format($metricas->ingresos, 0, ',', '.') }}
+        </p>
+        <p class="text-sm text-gray-500 mt-1 font-medium">Ingresos del periodo</p>
     </div>
 
-    {{-- Reparaciones en proceso --}}
-    <div class="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-lg hover:shadow-gray-100/50 transition-all duration-300">
-        <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    {{-- ── KPI 2: Ganancia neta ── --}}
+    @php $pctGanancia = $cambioPorcentaje['ganancia']; @endphp
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 relative overflow-hidden
+                hover:shadow-xl hover:shadow-gray-100/80 transition-all duration-300 group">
+        <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-violet-400 to-purple-600 rounded-t-2xl"></div>
+        <div class="flex items-start justify-between mb-5">
+            <div class="w-11 h-11 bg-gradient-to-br from-violet-400 to-purple-600 rounded-xl
+                        flex items-center justify-center shadow-lg shadow-violet-200/60
+                        group-hover:scale-110 transition-transform duration-300">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                 </svg>
             </div>
-            <span class="text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">En proceso</span>
+            @if ($pctGanancia !== null)
+                @if ($pctGanancia >= 0)
+                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700
+                                 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                        </svg>
+                        +{{ $pctGanancia }}%
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-red-600
+                                 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                        </svg>
+                        {{ $pctGanancia }}%
+                    </span>
+                @endif
+            @endif
         </div>
-        <p class="text-3xl font-bold text-gray-900">8</p>
-        <p class="text-sm text-gray-500 mt-1">Reparaciones activas</p>
+        <p class="text-2xl font-bold text-gray-900 tracking-tight">
+            ${{ number_format($metricas->ganancia_neta, 0, ',', '.') }}
+        </p>
+        <p class="text-sm text-gray-500 mt-1 font-medium">Ganancia neta</p>
     </div>
 
-    {{-- Reparaciones completadas --}}
-    <div class="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-lg hover:shadow-gray-100/50 transition-all duration-300">
-        <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    {{-- ── KPI 3: Reparaciones completadas ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 relative overflow-hidden
+                hover:shadow-xl hover:shadow-gray-100/80 transition-all duration-300 group">
+        <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-t-2xl"></div>
+        <div class="flex items-start justify-between mb-5">
+            <div class="w-11 h-11 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-xl
+                        flex items-center justify-center shadow-lg shadow-blue-200/60
+                        group-hover:scale-110 transition-transform duration-300">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
             </div>
-            <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Completadas</span>
+            <span class="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">
+                Entregadas
+            </span>
         </div>
-        <p class="text-3xl font-bold text-gray-900">23</p>
-        <p class="text-sm text-gray-500 mt-1">Este mes</p>
+        <p class="text-2xl font-bold text-gray-900 tracking-tight">{{ $metricas->completadas }}</p>
+        <p class="text-sm text-gray-500 mt-1 font-medium">Reparaciones completadas</p>
     </div>
 
-    {{-- Ganancia neta --}}
-    <div class="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-lg hover:shadow-gray-100/50 transition-all duration-300">
-        <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+    {{-- ── KPI 4: Reparaciones activas en taller ── --}}
+    {{-- Sin filtro de fecha: refleja el estado real del taller en este momento --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 relative overflow-hidden
+                hover:shadow-xl hover:shadow-gray-100/80 transition-all duration-300 group">
+        <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-amber-400 to-orange-500 rounded-t-2xl"></div>
+        <div class="flex items-start justify-between mb-5">
+            <div class="w-11 h-11 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl
+                        flex items-center justify-center shadow-lg shadow-amber-200/60
+                        group-hover:scale-110 transition-transform duration-300">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
             </div>
-            <div class="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
-                </svg>
-                +8%
-            </div>
+            <span class="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
+                En Proceso
+            </span>
         </div>
-        <p class="text-3xl font-bold text-gray-900">$1.680.000</p>
-        <p class="text-sm text-gray-500 mt-1">Ganancia neta del mes</p>
+        <p class="text-2xl font-bold text-gray-900 tracking-tight">{{ $reparacionesActivas }}</p>
+        <p class="text-sm text-gray-500 mt-1 font-medium">En proceso</p>
     </div>
 
 </div>
 
-{{-- ============================== --}}
-{{-- GRÁFICAS - Dos columnas         --}}
-{{-- ============================== --}}
-<div class="grid lg:grid-cols-3 gap-6 mb-8">
+{{-- ============================================================ --}}
+{{-- FILA 2: Barras mensuales (2/3) + Doughnut de estados (1/3)  --}}
+{{-- ============================================================ --}}
+<div class="grid lg:grid-cols-3 gap-5 mb-6">
 
-    {{-- Gráfica de ingresos por mes (2 columnas) --}}
-    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
-        <div class="flex items-center justify-between mb-6">
-            <div>
-                <h3 class="font-semibold text-gray-900">Ingresos mensuales</h3>
-                <p class="text-sm text-gray-500 mt-0.5">Comparativo de ingresos por mes</p>
-            </div>
-            <div class="flex items-center gap-4 text-xs">
-                <div class="flex items-center gap-1.5">
-                    <div class="w-3 h-3 rounded-full bg-blue-500"></div>
-                    <span class="text-gray-500">Reparaciones</span>
+    {{-- ── Gráfica de barras: Ingresos mensuales (año completo, independiente) ── --}}
+    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="flex items-start justify-between mb-6 gap-3">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <h3 class="font-semibold text-gray-900">Ingresos mensuales</h3>
+                    <span class="inline-flex items-center text-[10px] font-semibold text-slate-500
+                                 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full tracking-wide shrink-0">
+                        Vista independiente
+                    </span>
                 </div>
-                <div class="flex items-center gap-1.5">
-                    <div class="w-3 h-3 rounded-full bg-emerald-500"></div>
-                    <span class="text-gray-500">Ventas</span>
+                <p class="text-xs text-gray-400 mt-0.5">Ene–Dic · reparaciones entregadas</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                {{-- Selector de año fijo 2026–2029 --}}
+                <select id="select-anio-barras"
+                        class="text-sm border border-gray-200 rounded-xl px-3 bg-white text-gray-700
+                               focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400
+                               cursor-pointer min-h-[44px] transition-all duration-300 shadow-sm">
+                    <option value="2026" selected>2026</option>
+                    <option value="2027">2027</option>
+                    <option value="2028">2028</option>
+                    <option value="2029">2029</option>
+                </select>
+                <div class="flex items-center gap-1.5 text-xs">
+                    <div class="w-2.5 h-2.5 rounded-sm bg-indigo-500 shrink-0"></div>
+                    <span class="text-gray-500 font-medium">Reparaciones</span>
                 </div>
             </div>
         </div>
-        {{-- Canvas para Chart.js --}}
-        <div class="h-72">
+        {{-- Indicador de carga --}}
+        <div id="barras-loading" class="hidden items-center justify-center h-64">
+            <div class="w-6 h-6 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin"></div>
+        </div>
+        <div class="h-64" id="barras-canvas-wrap">
             <canvas id="chart-ingresos"></canvas>
         </div>
+        <div id="barras-empty" class="hidden items-center justify-center h-64 flex-col gap-2">
+            <svg class="w-8 h-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <p class="text-sm text-gray-400 font-medium">Sin datos para este año</p>
+        </div>
     </div>
 
-    {{-- Gráfica de reparaciones por estado (1 columna) --}}
-    <div class="bg-white rounded-2xl border border-gray-100 p-6">
-        <div class="mb-6">
+    {{-- ── Gráfica doughnut: Distribución por estado ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="mb-5">
             <h3 class="font-semibold text-gray-900">Por estado</h3>
-            <p class="text-sm text-gray-500 mt-0.5">Distribución actual</p>
+            <p class="text-xs text-gray-400 mt-0.5">Distribución del periodo seleccionado</p>
         </div>
-        <div class="h-52 flex items-center justify-center">
-            <canvas id="chart-estados"></canvas>
+        {{-- Centro del doughnut: total de reparaciones --}}
+        <div class="relative h-44 flex items-center justify-center">
+            <canvas id="chart-estados" class="absolute inset-0"></canvas>
+            {{-- Número total superpuesto en el centro del doughnut --}}
+            <div class="relative z-10 text-center pointer-events-none">
+                <p class="text-2xl font-bold text-gray-900 leading-none">
+                    {{ array_sum($contadores) }}
+                </p>
+                <p class="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wide font-medium">total</p>
+            </div>
         </div>
-        {{-- Leyenda manual debajo del doughnut --}}
-        <div class="space-y-3 mt-6">
+        {{-- Leyenda con conteos reales --}}
+        <div class="space-y-2.5 mt-5 pt-4 border-t border-gray-50">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <div class="w-3 h-3 rounded-full bg-amber-400"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></div>
                     <span class="text-sm text-gray-600">En proceso</span>
                 </div>
-                <span class="text-sm font-semibold text-gray-900">8</span>
+                <span class="text-sm font-bold text-gray-900">{{ $contadores['en_proceso'] }}</span>
             </div>
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <div class="w-3 h-3 rounded-full bg-blue-500"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></div>
                     <span class="text-sm text-gray-600">Arreglados</span>
                 </div>
-                <span class="text-sm font-semibold text-gray-900">5</span>
+                <span class="text-sm font-bold text-gray-900">{{ $contadores['arreglado'] }}</span>
             </div>
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <div class="w-3 h-3 rounded-full bg-emerald-500"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></div>
                     <span class="text-sm text-gray-600">Entregados</span>
                 </div>
-                <span class="text-sm font-semibold text-gray-900">23</span>
+                <span class="text-sm font-bold text-gray-900">{{ $contadores['entregado'] }}</span>
             </div>
         </div>
     </div>
 
 </div>
 
-{{-- ============================== --}}
-{{-- TABLA + CAJAS - Dos columnas    --}}
-{{-- ============================== --}}
-<div class="grid lg:grid-cols-3 gap-6">
+{{-- ============================================================ --}}
+{{-- FILA 3 (NUEVA): Área diaria (1/2) + Barras horizontales (1/2) --}}
+{{-- ============================================================ --}}
+<div class="grid lg:grid-cols-2 gap-5 mb-6">
 
-    {{-- Últimas reparaciones (2 columnas) --}}
-    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="font-semibold text-gray-900">Últimas reparaciones</h3>
-            <a href="#" class="text-sm text-blue-600 hover:text-blue-700 font-medium">Ver todas</a>
+    {{-- ── Gráfica de área: Actividad diaria (últimos 30 días) ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="flex items-start justify-between mb-6">
+            <div>
+                <h3 class="font-semibold text-gray-900">Actividad diaria</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Reparaciones ingresadas · últimos 30 días</p>
+            </div>
+            {{-- Indicador del total del período --}}
+            @php $totalDiario = array_sum($reparacionesDiarias['datos']); @endphp
+            <div class="text-right">
+                <p class="text-lg font-bold text-gray-900 leading-none">{{ $totalDiario }}</p>
+                <p class="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wide">30 días</p>
+            </div>
         </div>
-
-        {{-- Tabla responsive --}}
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-gray-100">
-                        <th class="text-left py-3 px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cliente</th>
-                        <th class="text-left py-3 px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Equipo</th>
-                        <th class="text-left py-3 px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Caja</th>
-                        <th class="text-left py-3 px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Valor</th>
-                        <th class="text-left py-3 px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-50">
-                    {{-- Datos de ejemplo --}}
-                    <tr class="hover:bg-gray-50/50 transition">
-                        <td class="py-3 px-2">
-                            <p class="font-medium text-gray-900">Juan Pérez</p>
-                            <p class="text-xs text-gray-400">310 123 4567</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <p class="text-gray-700">Samsung</p>
-                            <p class="text-xs text-gray-400">Galaxy S23</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">A1</span>
-                        </td>
-                        <td class="py-3 px-2 font-medium text-gray-900">$150.000</td>
-                        <td class="py-3 px-2">
-                            <span class="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full">En proceso</span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-gray-50/50 transition">
-                        <td class="py-3 px-2">
-                            <p class="font-medium text-gray-900">María López</p>
-                            <p class="text-xs text-gray-400">315 987 6543</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <p class="text-gray-700">iPhone</p>
-                            <p class="text-xs text-gray-400">14 Pro</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">B2</span>
-                        </td>
-                        <td class="py-3 px-2 font-medium text-gray-900">$280.000</td>
-                        <td class="py-3 px-2">
-                            <span class="bg-blue-50 text-blue-700 text-xs font-medium px-2.5 py-1 rounded-full">Arreglado</span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-gray-50/50 transition">
-                        <td class="py-3 px-2">
-                            <p class="font-medium text-gray-900">Carlos García</p>
-                            <p class="text-xs text-gray-400">300 456 7890</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <p class="text-gray-700">Xiaomi</p>
-                            <p class="text-xs text-gray-400">Redmi Note 12</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">A3</span>
-                        </td>
-                        <td class="py-3 px-2 font-medium text-gray-900">$85.000</td>
-                        <td class="py-3 px-2">
-                            <span class="bg-green-50 text-green-700 text-xs font-medium px-2.5 py-1 rounded-full">Entregado</span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-gray-50/50 transition">
-                        <td class="py-3 px-2">
-                            <p class="font-medium text-gray-900">Ana Martínez</p>
-                            <p class="text-xs text-gray-400">318 222 3344</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <p class="text-gray-700">Motorola</p>
-                            <p class="text-xs text-gray-400">Moto G54</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">C1</span>
-                        </td>
-                        <td class="py-3 px-2 font-medium text-gray-900">$60.000</td>
-                        <td class="py-3 px-2">
-                            <span class="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full">En proceso</span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-gray-50/50 transition">
-                        <td class="py-3 px-2">
-                            <p class="font-medium text-gray-900">Pedro Ruiz</p>
-                            <p class="text-xs text-gray-400">301 555 8899</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <p class="text-gray-700">Samsung</p>
-                            <p class="text-xs text-gray-400">Galaxy A54</p>
-                        </td>
-                        <td class="py-3 px-2">
-                            <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">B4</span>
-                        </td>
-                        <td class="py-3 px-2 font-medium text-gray-900">$120.000</td>
-                        <td class="py-3 px-2">
-                            <span class="bg-green-50 text-green-700 text-xs font-medium px-2.5 py-1 rounded-full">Entregado</span>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="h-52">
+            <canvas id="chart-diario"></canvas>
         </div>
     </div>
 
-    {{-- Estado de cajas (1 columna) --}}
-    <div class="bg-white rounded-2xl border border-gray-100 p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="font-semibold text-gray-900">Cajas</h3>
-            <span class="text-xs text-gray-400">Tiempo real</span>
-        </div>
-
-        <div class="space-y-5">
-            {{-- Grupo A --}}
+    {{-- ── Gráfica de barras horizontales: Top marcas ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="flex items-start justify-between mb-6">
             <div>
-                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Grupo A</p>
-                <div class="flex flex-wrap gap-2">
-                    {{-- A1 ocupada (ejemplo) --}}
-                    <div class="w-12 h-12 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-700 text-xs font-bold cursor-default" title="Ocupada - Juan Pérez">
-                        A1
-                    </div>
-                    @for ($i = 2; $i <= 4; $i++)
-                    <div class="w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center text-green-700 text-xs font-bold cursor-default" title="Libre">
-                        A{{ $i }}
-                    </div>
-                    @endfor
-                    {{-- A5 ocupada (ejemplo) --}}
-                    <div class="w-12 h-12 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-700 text-xs font-bold cursor-default" title="Ocupada - Ana Martínez">
-                        A5
-                    </div>
-                </div>
-            </div>
-
-            {{-- Grupo B --}}
-            <div>
-                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Grupo B</p>
-                <div class="flex flex-wrap gap-2">
-                    <div class="w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center text-green-700 text-xs font-bold cursor-default">B1</div>
-                    <div class="w-12 h-12 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-700 text-xs font-bold cursor-default" title="Ocupada - María López">B2</div>
-                    <div class="w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center text-green-700 text-xs font-bold cursor-default">B3</div>
-                    <div class="w-12 h-12 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-700 text-xs font-bold cursor-default" title="Ocupada - Pedro Ruiz">B4</div>
-                    <div class="w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center text-green-700 text-xs font-bold cursor-default">B5</div>
-                </div>
-            </div>
-
-            {{-- Grupo C --}}
-            <div>
-                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Grupo C</p>
-                <div class="flex flex-wrap gap-2">
-                    <div class="w-12 h-12 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-700 text-xs font-bold cursor-default" title="Ocupada">C1</div>
-                    @for ($i = 2; $i <= 5; $i++)
-                    <div class="w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center text-green-700 text-xs font-bold cursor-default">C{{ $i }}</div>
-                    @endfor
-                </div>
+                <h3 class="font-semibold text-gray-900">Top marcas</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Las 5 más reparadas · histórico</p>
             </div>
         </div>
+        <div class="h-52">
+            <canvas id="chart-marcas"></canvas>
+        </div>
+    </div>
 
-        {{-- Leyenda --}}
-        <div class="flex items-center gap-4 mt-6 pt-4 border-t border-gray-100">
-            <div class="flex items-center gap-2">
-                <div class="w-3 h-3 rounded bg-green-200 border border-green-300"></div>
-                <span class="text-xs text-gray-500">Libre (10)</span>
+</div>
+
+{{-- ============================================================ --}}
+{{-- FILA 4: Últimas reparaciones + Cajas + Cobros pendientes     --}}
+{{-- ============================================================ --}}
+<div class="grid lg:grid-cols-3 gap-5">
+
+    {{-- ── Columna 1: Últimas 5 reparaciones ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="flex items-center justify-between mb-5">
+            <h3 class="font-semibold text-gray-900">Últimas reparaciones</h3>
+            <a href="{{ route('admin.reparaciones.index') }}"
+               class="text-xs text-blue-600 hover:text-blue-700 font-semibold transition-colors">
+                Ver todas →
+            </a>
+        </div>
+
+        <div class="space-y-3">
+            @forelse ($ultimasReparaciones as $rep)
+                @php
+                    // Clases del badge según estado
+                    $badgeClase = match ($rep->estado->value) {
+                        'en_proceso' => 'bg-amber-50 text-amber-700 border-amber-100',
+                        'arreglado'  => 'bg-blue-50 text-blue-700 border-blue-100',
+                        'entregado'  => 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                        default      => 'bg-gray-50 text-gray-700 border-gray-100',
+                    };
+                @endphp
+                <div class="flex items-start justify-between py-2.5 border-b border-gray-50 last:border-0">
+                    <div class="flex-1 min-w-0 mr-3">
+                        <p class="text-sm font-semibold text-gray-900 truncate">{{ $rep->nombre_cliente }}</p>
+                        <p class="text-xs text-gray-400 truncate mt-0.5">
+                            {{ $rep->marca }} {{ $rep->modelo }}
+                            @if ($rep->caja)
+                                ·
+                                <span class="font-semibold text-gray-600">{{ $rep->caja->nombre_display }}</span>
+                            @endif
+                        </p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1.5 shrink-0">
+                        <p class="text-sm font-bold text-gray-900">
+                            ${{ number_format($rep->valor_total, 0, ',', '.') }}
+                        </p>
+                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full border {{ $badgeClase }}">
+                            {{ $rep->estado->label() }}
+                        </span>
+                    </div>
+                </div>
+            @empty
+                <div class="flex flex-col items-center justify-center py-10 text-center">
+                    <div class="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mb-3">
+                        <svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm text-gray-400">Sin reparaciones aún</p>
+                </div>
+            @endforelse
+        </div>
+    </div>
+
+    {{-- ── Columna 2: Estado de cajas ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="flex items-center justify-between mb-5">
+            <h3 class="font-semibold text-gray-900">Estado de cajas</h3>
+            <span class="text-xs text-gray-400 font-medium">Tiempo real</span>
+        </div>
+
+        <div class="space-y-4">
+            @forelse ($cajasPorGrupo as $grupo => $cajas)
+                <div>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                        Grupo {{ $grupo }}
+                    </p>
+                    <div class="flex flex-wrap gap-1.5">
+                        @foreach ($cajas as $caja)
+                            @if ($caja['libre'])
+                                {{-- Caja libre: verde con ícono de check sutil --}}
+                                <div class="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200
+                                            flex items-center justify-center text-emerald-700
+                                            text-xs font-bold cursor-default hover:bg-emerald-100 transition-colors"
+                                     title="Libre">
+                                    {{ $caja['nombre_display'] }}
+                                </div>
+                            @else
+                                {{-- Caja ocupada: roja, al hover muestra el cliente --}}
+                                <div class="w-11 h-11 rounded-xl bg-red-50 border border-red-200
+                                            flex items-center justify-center text-red-700
+                                            text-xs font-bold cursor-default hover:bg-red-100 transition-colors"
+                                     title="Ocupada{{ $caja['cliente'] ? ' — ' . $caja['cliente'] : '' }}">
+                                    {{ $caja['nombre_display'] }}
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+            @empty
+                <div class="flex flex-col items-center justify-center py-8 text-center">
+                    <p class="text-sm text-gray-400">No hay cajas configuradas</p>
+                </div>
+            @endforelse
+        </div>
+
+        {{-- Leyenda con conteos calculados desde los datos reales --}}
+        @php
+            $flatCajas     = $cajasPorGrupo->flatten(1);
+            $totalLibres   = $flatCajas->where('libre', true)->count();
+            $totalOcupadas = $flatCajas->where('libre', false)->count();
+        @endphp
+        <div class="flex items-center gap-5 mt-5 pt-4 border-t border-gray-100">
+            <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded bg-emerald-200 border border-emerald-300"></div>
+                <span class="text-xs text-gray-500 font-medium">Libre ({{ $totalLibres }})</span>
             </div>
-            <div class="flex items-center gap-2">
-                <div class="w-3 h-3 rounded bg-red-200 border border-red-300"></div>
-                <span class="text-xs text-gray-500">Ocupada (5)</span>
+            <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded bg-red-200 border border-red-300"></div>
+                <span class="text-xs text-gray-500 font-medium">Ocupada ({{ $totalOcupadas }})</span>
             </div>
         </div>
+    </div>
+
+    {{-- ── Columna 3: Cobros pendientes en reparaciones activas ── --}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6
+                hover:shadow-xl hover:shadow-gray-100/50 transition-all duration-300">
+        <div class="mb-5">
+            <h3 class="font-semibold text-gray-900">Cobros pendientes</h3>
+            <p class="text-xs text-gray-400 mt-0.5">Reparaciones activas en taller</p>
+        </div>
+
+        {{-- Porcentaje cobrado grande --}}
+        <div class="flex items-end gap-3 mb-4">
+            <span class="text-4xl font-bold text-gray-900 leading-none tracking-tight">
+                {{ $estadisticasCobro->porcentaje }}%
+            </span>
+            <div class="mb-0.5">
+                <p class="text-xs text-gray-500 leading-snug font-medium">cobrado</p>
+                <p class="text-xs text-gray-400 leading-snug">del total activo</p>
+            </div>
+        </div>
+
+        {{-- Barra de progreso con gradiente --}}
+        <div class="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden mb-5">
+            <div class="h-full bg-gradient-to-r from-indigo-500 to-blue-400 rounded-full
+                        transition-all duration-700"
+                 style="width: {{ min(100, max(2, $estadisticasCobro->porcentaje)) }}%">
+            </div>
+        </div>
+
+        {{-- Desglose de valores --}}
+        <div class="space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></div>
+                    <span class="text-sm text-gray-600">Cobrado</span>
+                </div>
+                <span class="text-sm font-bold text-gray-900">
+                    ${{ number_format($estadisticasCobro->totalCobrado, 0, ',', '.') }}
+                </span>
+            </div>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-amber-400 shrink-0"></div>
+                    <span class="text-sm text-gray-600">Por cobrar</span>
+                </div>
+                <span class="text-sm font-bold text-amber-600">
+                    ${{ number_format($estadisticasCobro->pendiente, 0, ',', '.') }}
+                </span>
+            </div>
+            <div class="flex items-center justify-between pt-3 border-t border-gray-100">
+                <span class="text-sm font-semibold text-gray-700">Total activo</span>
+                <span class="text-sm font-bold text-gray-900">
+                    ${{ number_format($estadisticasCobro->totalValor, 0, ',', '.') }}
+                </span>
+            </div>
+        </div>
+
+        {{-- Mensaje cuando no hay reparaciones activas --}}
+        @if ($reparacionesActivas === 0)
+            <div class="mt-4 pt-3 border-t border-gray-50 text-center">
+                <p class="text-xs text-gray-400 italic">Sin reparaciones activas en taller</p>
+            </div>
+        @endif
     </div>
 
 </div>
 
 @endsection
 
-{{-- ============================== --}}
-{{-- SCRIPTS - Chart.js              --}}
-{{-- ============================== --}}
+{{-- ============================================================ --}}
+{{-- SCRIPTS: Chart.js + 4 gráficas                               --}}
+{{-- ============================================================ --}}
 @section('scripts')
-{{--
-    Chart.js se carga desde CDN.
-    Lo cargamos en la sección scripts para que no afecte
-    otras vistas que no necesitan gráficas.
---}}
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
 <script>
-    // ── Gráfica de ingresos mensuales (barras) ──
-    // Datos de ejemplo: ingresos por reparaciones y ventas por mes
-    const ctxIngresos = document.getElementById('chart-ingresos').getContext('2d');
-    new Chart(ctxIngresos, {
+    // ─── Datos del servidor → JavaScript ────────────────────────
+    const datosIngresos  = @json($ingresosAnuales);   // Año actual Jan-Dic (independiente del filtro)
+    const datosEstados   = @json($contadores);
+    const datosDiarios   = @json($reparacionesDiarias);
+    const datosMarcas    = @json($topMarcasChart);
+    const urlIngresosAnuales = "{{ route('admin.dashboard.ingresos-anuales') }}";
+
+    // ─── Helpers reutilizables ───────────────────────────────────
+
+    /**
+     * Formatea un número como moneda colombiana: $1.234.567
+     * Usado en los tooltips de todas las gráficas financieras.
+     */
+    function formatCOP(valor) {
+        return '$' + Math.round(valor).toLocaleString('es-CO');
+    }
+
+    /**
+     * Estilo base compartido por todos los tooltips.
+     * Mantiene consistencia visual entre las 4 gráficas.
+     */
+    const tooltipBase = {
+        backgroundColor: '#0f172a',
+        titleColor: '#e2e8f0',
+        bodyColor: '#94a3b8',
+        borderColor: '#1e293b',
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 10,
+        titleFont: { size: 12, weight: '600' },
+        bodyFont: { size: 12 },
+        displayColors: true,
+        boxWidth: 10,
+        boxHeight: 10,
+        boxPadding: 4,
+    };
+
+    // ════════════════════════════════════════════════════════════
+    // GRÁFICA 1: Barras — Ingresos anuales (independiente del filtro)
+    // ════════════════════════════════════════════════════════════
+    const chartIngresos = new Chart(document.getElementById('chart-ingresos'), {
         type: 'bar',
         data: {
-            labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+            labels: datosIngresos.labels,
             datasets: [
                 {
                     label: 'Reparaciones',
-                    data: [1800000, 2100000, 1950000, 2300000, 2450000, 2100000, 2600000, 2800000, 2400000, 2700000, 2900000, 2450000],
-                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                    data: datosIngresos.datos,
+                    backgroundColor: 'rgba(99, 102, 241, 0.85)',
+                    hoverBackgroundColor: 'rgba(99, 102, 241, 1)',
                     borderRadius: 6,
                     borderSkipped: false,
                 },
                 {
+                    // Dataset reservado para ventas — en cero hasta implementar el módulo
                     label: 'Ventas',
-                    data: [650000, 800000, 720000, 900000, 850000, 780000, 950000, 1100000, 880000, 1000000, 1050000, 900000],
-                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    data: new Array(datosIngresos.labels.length).fill(0),
+                    backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                    hoverBackgroundColor: 'rgba(16, 185, 129, 1)',
                     borderRadius: 6,
                     borderSkipped: false,
                 }
@@ -412,23 +623,17 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // Interacción: al pasar el mouse muestra ambos datasets
-            interaction: {
-                intersect: false,
-                mode: 'index',
-            },
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: '#1e293b',
-                    titleFont: { size: 13 },
-                    bodyFont: { size: 12 },
-                    padding: 12,
-                    cornerRadius: 10,
-                    // Formato de moneda colombiana en el tooltip
+                    ...tooltipBase,
                     callbacks: {
-                        label: function(ctx) {
-                            return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString('es-CO');
+                        label: (ctx) => {
+                            if (ctx.dataset.label === 'Ventas' && ctx.parsed.y === 0) {
+                                return '  Ventas: próximamente';
+                            }
+                            return '  ' + ctx.dataset.label + ': ' + formatCOP(ctx.parsed.y);
                         }
                     }
                 }
@@ -436,17 +641,21 @@
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { color: '#94a3b8', font: { size: 12 } }
+                    ticks: { color: '#94a3b8', font: { size: 11 } },
+                    border: { display: false },
                 },
                 y: {
-                    grid: { color: '#f1f5f9' },
+                    grid: { color: '#f8fafc', lineWidth: 1 },
                     border: { display: false },
                     ticks: {
                         color: '#94a3b8',
-                        font: { size: 11 },
-                        // Formato corto: 1.8M, 2.1M
-                        callback: function(value) {
-                            return '$' + (value / 1000000).toFixed(1) + 'M';
+                        font: { size: 10 },
+                        // Formato corto: $1.8M, $500K
+                        callback: (v) => {
+                            if (v === 0) return '$0';
+                            if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1) + 'M';
+                            if (v >= 1_000)     return '$' + (v / 1_000).toFixed(0) + 'K';
+                            return '$' + v;
                         }
                     }
                 }
@@ -454,45 +663,269 @@
         }
     });
 
-    // ── Gráfica de estados (doughnut) ──
-    const ctxEstados = document.getElementById('chart-estados').getContext('2d');
-    new Chart(ctxEstados, {
-        type: 'doughnut',
+    // ── Selector de año: actualiza la gráfica de barras vía AJAX ──
+    document.getElementById('select-anio-barras').addEventListener('change', async function () {
+        const select     = this;
+        const loading    = document.getElementById('barras-loading');
+        const canvasWrap = document.getElementById('barras-canvas-wrap');
+        const empty      = document.getElementById('barras-empty');
+
+        select.disabled = true;
+        loading.classList.replace('hidden', 'flex');
+        canvasWrap.classList.add('hidden');
+        empty.classList.add('hidden');
+
+        try {
+            const res  = await fetch(urlIngresosAnuales + '?anio=' + select.value, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+
+            chartIngresos.data.labels           = data.labels;
+            chartIngresos.data.datasets[0].data = data.datos;
+            chartIngresos.data.datasets[1].data = new Array(12).fill(0);
+            chartIngresos.update('active');
+
+            const sinDatos = data.datos.every(v => v === 0);
+            if (sinDatos) {
+                empty.classList.replace('hidden', 'flex');
+            } else {
+                canvasWrap.classList.remove('hidden');
+            }
+        } catch (e) {
+            console.error('Error al cargar ingresos anuales:', e);
+            canvasWrap.classList.remove('hidden');
+        } finally {
+            select.disabled = false;
+            loading.classList.replace('flex', 'hidden');
+        }
+    });
+
+    // ════════════════════════════════════════════════════════════
+    // GRÁFICA 2: Doughnut — Distribución por estado
+    // ════════════════════════════════════════════════════════════
+
+    // spacing y borderRadius causan muescas visibles cuando solo 1 segmento tiene datos:
+    // el offset angular de spacing se aplica íntegro al único arco, creando dos cortes
+    // en lo que debería ser un anillo continuo. Se anulan con ≤1 segmento activo.
+    {
+        const valsEstados = [datosEstados.en_proceso, datosEstados.arreglado, datosEstados.entregado];
+        const segmentosActivos = valsEstados.filter(v => v > 0).length;
+
+        new Chart(document.getElementById('chart-estados'), {
+            type: 'doughnut',
+            data: {
+                labels: ['En proceso', 'Arreglados', 'Entregados'],
+                datasets: [{
+                    data: valsEstados,
+                    backgroundColor: [
+                        'rgba(251, 191, 36, 0.9)',
+                        'rgba(99, 102, 241, 0.9)',
+                        'rgba(16, 185, 129, 0.9)',
+                    ],
+                    hoverBackgroundColor: [
+                        'rgba(251, 191, 36, 1)',
+                        'rgba(99, 102, 241, 1)',
+                        'rgba(16, 185, 129, 1)',
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                    spacing:      segmentosActivos >= 2 ? 1 : 0,
+                    borderRadius: segmentosActivos >= 2 ? 5 : 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '74%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { ...tooltipBase }
+                }
+            }
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // GRÁFICA 3 (NUEVA): Área con gradiente — Actividad diaria
+    // ════════════════════════════════════════════════════════════
+    const canvasDiario = document.getElementById('chart-diario');
+
+    new Chart(canvasDiario, {
+        type: 'line',
         data: {
-            labels: ['En proceso', 'Arreglados', 'Entregados'],
+            labels: datosDiarios.labels,
             datasets: [{
-                data: [8, 5, 23],
-                backgroundColor: [
-                    'rgba(251, 191, 36, 0.9)',
-                    'rgba(59, 130, 246, 0.9)',
-                    'rgba(16, 185, 129, 0.9)',
-                ],
-                borderWidth: 0,
-                spacing: 4,
-                borderRadius: 4,
+                label: 'Reparaciones',
+                data: datosDiarios.datos,
+                fill: true,
+                // Gradiente vertical: indigo semitransparente arriba → transparente abajo
+                backgroundColor: (context) => {
+                    const chart = context.chart;
+                    const { ctx, chartArea } = chart;
+                    if (!chartArea) return 'rgba(99, 102, 241, 0.1)';
+                    const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.22)');
+                    gradient.addColorStop(0.6, 'rgba(99, 102, 241, 0.06)');
+                    gradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
+                    return gradient;
+                },
+                borderColor: 'rgba(99, 102, 241, 0.9)',
+                borderWidth: 2,
+                tension: 0.45,          // Curvas suaves tipo spline
+                pointRadius: 0,         // Sin puntos para un look limpio
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#6366f1',
+                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderWidth: 2.5,
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '70%',
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: '#1e293b',
-                    padding: 12,
-                    cornerRadius: 10,
+                    ...tooltipBase,
+                    callbacks: {
+                        label: (ctx) => '  Reparaciones: ' + ctx.parsed.y,
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    border: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 10 },
+                        maxTicksLimit: 10,  // Mostrar solo ~10 fechas para no saturar el eje
+                        maxRotation: 0,
+                    }
+                },
+                y: {
+                    grid: { color: '#f8fafc' },
+                    border: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 10 },
+                        stepSize: 1,       // Solo números enteros (no puede haber 2.5 reparaciones)
+                        precision: 0,
+                    },
+                    min: 0,
                 }
             }
         }
     });
 
-    // ── Función placeholder para filtros ──
-    // Cuando conectemos datos reales, esta función hará
-    // una petición AJAX al servidor para actualizar las gráficas
-    function updateFilter(range) {
-        console.log('Filtro seleccionado:', range);
-        // TODO: fetch('/admin/dashboard/data?range=' + range)
+    // ════════════════════════════════════════════════════════════
+    // GRÁFICA 4 (NUEVA): Barras horizontales — Top marcas
+    // ════════════════════════════════════════════════════════════
+    {
+        // Máximo real del dataset (0 si está vacío para evitar Math.max(...[]) = -Infinity)
+        const maxMarcas = datosMarcas.datos.length > 0 ? Math.max(...datosMarcas.datos) : 0;
+
+        // Calcula el "número bonito" más cercano apuntando a ~5 intervalos visibles.
+        // Algoritmo: determina la magnitud del paso bruto y lo redondea al múltiplo
+        // de {1, 2, 5} × 10^n más apropiado. Funciona para cualquier orden de magnitud
+        // sin necesidad de añadir nuevos rangos: 10 → 2, 1 000 → 200, 50 000 → 10 000…
+        function calcularStepSize(max) {
+            if (max <= 0) return 1;
+            const rawStep = max / 5;
+            if (rawStep < 1) return 1;                           // mínimo paso = 1 (conteos enteros)
+            const mag  = Math.pow(10, Math.floor(Math.log10(rawStep)));
+            const frac = rawStep / mag;
+            const nice = frac < 1.5 ? 1 : frac < 3 ? 2 : frac < 7 ? 5 : 10;
+            return nice * mag;
+        }
+
+        const stepMarcas = calcularStepSize(maxMarcas);
+
+        // Máximo del eje = primer múltiplo del step que supera el 20 % de margen.
+        // Alinear al step evita que el eje termine en un número "feo" como 24 137.
+        const maxEjeMarcas = maxMarcas > 0
+            ? Math.ceil(maxMarcas * 1.2 / stepMarcas) * stepMarcas
+            : 5;
+
+    new Chart(document.getElementById('chart-marcas'), {
+        type: 'bar',
+        data: {
+            labels: datosMarcas.labels,
+            datasets: [{
+                label: 'Reparaciones',
+                data: datosMarcas.datos,
+                // Paleta de colores distintos para cada marca (máximo 5)
+                backgroundColor: [
+                    'rgba(99, 102, 241, 0.85)',
+                    'rgba(16, 185, 129, 0.85)',
+                    'rgba(245, 158, 11, 0.85)',
+                    'rgba(239, 68, 68, 0.75)',
+                    'rgba(14, 165, 233, 0.85)',
+                ],
+                hoverBackgroundColor: [
+                    'rgba(99, 102, 241, 1)',
+                    'rgba(16, 185, 129, 1)',
+                    'rgba(245, 158, 11, 1)',
+                    'rgba(239, 68, 68, 1)',
+                    'rgba(14, 165, 233, 1)',
+                ],
+                borderRadius: 6,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            indexAxis: 'y',     // Barras horizontales
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ...tooltipBase,
+                    callbacks: {
+                        label: (ctx) => '  Total: ' + ctx.parsed.x + ' reparaciones',
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: '#f8fafc' },
+                    border: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 10 },
+                        precision: 0,
+                        stepSize: stepMarcas,
+                    },
+                    max: maxEjeMarcas,
+                },
+                y: {
+                    grid: { display: false },
+                    border: { display: false },
+                    ticks: {
+                        color: '#374151',
+                        font: { size: 12, weight: '500' },
+                    }
+                }
+            }
+        }
+    });
     }
+
+    // ─── Toggle de campos de fecha personalizado ─────────────────
+    const selectPeriodo       = document.getElementById('select-periodo');
+    const camposPersonalizado = document.getElementById('campos-personalizado');
+
+    selectPeriodo.addEventListener('change', function () {
+        if (this.value === 'personalizado') {
+            // Mostrar campos de fecha — el usuario hace submit con el botón "Aplicar"
+            camposPersonalizado.classList.remove('hidden');
+        } else {
+            // Ocultar campos y hacer submit inmediato para cualquier otro periodo
+            camposPersonalizado.classList.add('hidden');
+            this.form.submit();
+        }
+    });
 </script>
+
 @endsection
