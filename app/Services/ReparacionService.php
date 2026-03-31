@@ -89,6 +89,26 @@ class ReparacionService
     {
         return DB::transaction(function () use ($reparacion, $nuevoEstado) {
 
+            // Regla de negocio: una caja solo puede tener una reparación activa al mismo tiempo.
+            // Solo aplica cuando el destino es un estado activo (en_proceso o arreglado).
+            // Se excluye la propia reparación para no bloquear transiciones válidas
+            // como en_proceso → arreglado, donde ella misma ya figura como activa en BD.
+            $estadosActivos = [EstadoReparacion::EnProceso->value, EstadoReparacion::Arreglado->value];
+
+            if (in_array($nuevoEstado, $estadosActivos)) {
+                $otraActiva = $reparacion->caja
+                    ->reparacionesActivas()
+                    ->where('id', '!=', $reparacion->id)
+                    ->exists();
+
+                if ($otraActiva) {
+                    throw new \RuntimeException(
+                        "La caja {$reparacion->caja->nombre_display} ya tiene otra reparación activa. " .
+                        "Entrega esa reparación antes de reactivar esta."
+                    );
+                }
+            }
+
             $reparacion->update([
                 'estado' => $nuevoEstado,
                 'fecha_entrega' => $nuevoEstado === 'entregado' ? now() : $reparacion->fecha_entrega,
