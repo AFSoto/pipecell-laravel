@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CajaController;
+use App\Http\Controllers\Admin\PerfilController;
 use App\Http\Controllers\Admin\ReparacionController;
 use Illuminate\Support\Facades\Route;
 
@@ -67,4 +68,10 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     // ── Cajas ──
     Route::post('/cajas', [CajaController::class, 'store'])
         ->name('cajas.store');
+
+    // ── Perfil de usuario ──
+    Route::get('/perfil',                    [PerfilController::class, 'index'])            ->name('perfil');
+    Route::put('/perfil/info',               [PerfilController::class, 'actualizarInfo'])   ->name('perfil.info');
+    Route::put('/perfil/password',           [PerfilController::class, 'cambiarPassword'])  ->name('perfil.password');
+    Route::delete('/perfil/otras-sesiones',  [PerfilController::class, 'cerrarOtrasSesiones'])->name('perfil.otras-sesiones');
 });
