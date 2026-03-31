@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\CajaController;
 use App\Http\Controllers\Admin\ReparacionController;
 use Illuminate\Support\Facades\Route;
 
@@ -62,4 +63,8 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
 
     Route::put('/reparaciones/{reparacion}', [ReparacionController::class, 'update'])
         ->name('reparaciones.update');
+
+    // ── Cajas ──
+    Route::post('/cajas', [CajaController::class, 'store'])
+        ->name('cajas.store');
 });

@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Enums\EstadoCaja;
+use App\Enums\EstadoReparacion;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Modelo de caja física del local.
@@ -49,15 +51,28 @@ class Caja extends Model
         return Attribute::get(fn () => $this->grupo . $this->numero);
     }
 
+    // ── Relaciones ──
+
+    /**
+     * Reparaciones activas (en_proceso o arreglado) de esta caja.
+     * Fuente de verdad real para determinar si la caja está ocupada.
+     */
+    public function reparacionesActivas(): HasMany
+    {
+        return $this->hasMany(Reparacion::class)
+            ->whereIn('estado', [EstadoReparacion::EnProceso, EstadoReparacion::Arreglado]);
+    }
+
     // ── Scopes ──
 
     /**
      * Scope: filtra solo cajas libres.
-     * Uso: Caja::libres()->get() → solo las disponibles
+     * Usa la tabla reparaciones como fuente de verdad en lugar del campo estado,
+     * que puede quedar desincronizado si una reparación fue modificada externamente.
      */
     public function scopeLibres($query)
     {
-        return $query->where('estado', EstadoCaja::Libre);
+        return $query->whereDoesntHave('reparacionesActivas');
     }
 
     /**
@@ -66,7 +81,7 @@ class Caja extends Model
      */
     public function scopeOcupadas($query)
     {
-        return $query->where('estado', EstadoCaja::Ocupada);
+        return $query->whereHas('reparacionesActivas');
     }
 
     /**
@@ -86,7 +101,7 @@ class Caja extends Model
      */
     public function estaLibre(): bool
     {
-        return $this->estado === EstadoCaja::Libre;
+        return ! $this->reparacionesActivas()->exists();
     }
 
     /**

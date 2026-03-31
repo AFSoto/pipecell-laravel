@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\EstadoCaja;
 use App\Enums\EstadoReparacion;
 use App\Models\Abono;
 use App\Models\Caja;
@@ -41,10 +40,10 @@ class ReparacionService
             // haber pasado otra petición. lockForUpdate() cierra esa ventana.
             $caja = Caja::lockForUpdate()->findOrFail($datos['caja_id']);
 
-            // Verificamos el estado dentro de la transacción bloqueada.
-            // Si no está libre, lanzamos una excepción que deshace la transacción
-            // y el controlador la convierte en mensaje de error para el usuario.
-            if ($caja->estado !== EstadoCaja::Libre) {
+            // Verificamos contra reparaciones activas reales, no contra el campo estado
+            // que puede estar desincronizado (ej: reparación volvió de entregado a arreglado
+            // sin que el campo estado de la caja se actualizara).
+            if (! $caja->estaLibre()) {
                 throw new \RuntimeException(
                     "La caja {$caja->nombre_display} ya está ocupada. Por favor, selecciona otra."
                 );
@@ -90,16 +89,38 @@ class ReparacionService
     {
         return DB::transaction(function () use ($reparacion, $nuevoEstado) {
 
+            // Regla de negocio: una caja solo puede tener una reparación activa al mismo tiempo.
+            // Solo aplica cuando el destino es un estado activo (en_proceso o arreglado).
+            // Se excluye la propia reparación para no bloquear transiciones válidas
+            // como en_proceso → arreglado, donde ella misma ya figura como activa en BD.
+            $estadosActivos = [EstadoReparacion::EnProceso->value, EstadoReparacion::Arreglado->value];
+
+            if (in_array($nuevoEstado, $estadosActivos)) {
+                $otraActiva = $reparacion->caja
+                    ->reparacionesActivas()
+                    ->where('id', '!=', $reparacion->id)
+                    ->exists();
+
+                if ($otraActiva) {
+                    throw new \RuntimeException(
+                        "La caja {$reparacion->caja->nombre_display} ya tiene otra reparación activa. " .
+                        "Entrega esa reparación antes de reactivar esta."
+                    );
+                }
+            }
+
             $reparacion->update([
                 'estado' => $nuevoEstado,
                 'fecha_entrega' => $nuevoEstado === 'entregado' ? now() : $reparacion->fecha_entrega,
             ]);
 
+            // Sincronizar el campo estado de la caja con el estado real de la reparación.
+            // 'entregado' → la reparación termina → caja libre.
+            // Cualquier otro estado (en_proceso, arreglado) → reparación activa → caja ocupada.
+            // Esto cubre el caso entregado → arreglado que antes dejaba la caja como libre.
             if ($nuevoEstado === 'entregado') {
                 $reparacion->caja->liberar();
-            }
-
-            if ($nuevoEstado === 'en_proceso' && $reparacion->caja->estaLibre()) {
+            } else {
                 $reparacion->caja->ocupar();
             }
 
