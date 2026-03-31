@@ -826,16 +826,27 @@
         // Máximo real del dataset (0 si está vacío para evitar Math.max(...[]) = -Infinity)
         const maxMarcas = datosMarcas.datos.length > 0 ? Math.max(...datosMarcas.datos) : 0;
 
-        // stepSize dinámico según rango del valor máximo
-        const stepMarcas = maxMarcas <= 10  ? 1
-                         : maxMarcas <= 50  ? 5
-                         : maxMarcas <= 200 ? 25
-                         : maxMarcas <= 500 ? 50
-                         : maxMarcas <= 1000 ? 100
-                         : 250;
+        // Calcula el "número bonito" más cercano apuntando a ~5 intervalos visibles.
+        // Algoritmo: determina la magnitud del paso bruto y lo redondea al múltiplo
+        // de {1, 2, 5} × 10^n más apropiado. Funciona para cualquier orden de magnitud
+        // sin necesidad de añadir nuevos rangos: 10 → 2, 1 000 → 200, 50 000 → 10 000…
+        function calcularStepSize(max) {
+            if (max <= 0) return 1;
+            const rawStep = max / 5;
+            if (rawStep < 1) return 1;                           // mínimo paso = 1 (conteos enteros)
+            const mag  = Math.pow(10, Math.floor(Math.log10(rawStep)));
+            const frac = rawStep / mag;
+            const nice = frac < 1.5 ? 1 : frac < 3 ? 2 : frac < 7 ? 5 : 10;
+            return nice * mag;
+        }
 
-        // Eje X con 20 % de margen sobre el máximo para que ninguna barra llegue al borde
-        const maxEjeMarcas = Math.ceil(maxMarcas * 1.2) || 5;
+        const stepMarcas = calcularStepSize(maxMarcas);
+
+        // Máximo del eje = primer múltiplo del step que supera el 20 % de margen.
+        // Alinear al step evita que el eje termine en un número "feo" como 24 137.
+        const maxEjeMarcas = maxMarcas > 0
+            ? Math.ceil(maxMarcas * 1.2 / stepMarcas) * stepMarcas
+            : 5;
 
     new Chart(document.getElementById('chart-marcas'), {
         type: 'bar',
