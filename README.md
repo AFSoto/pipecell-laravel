@@ -1,59 +1,157 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+PipeCell — Panel de Gestión de Reparaciones
+Sistema de administración para talleres de reparación de celulares. Permite gestionar el flujo completo de reparaciones, desde la recepción del equipo hasta la entrega al cliente, incluyendo control de cajas físicas, registro de abonos y seguimiento de estados.
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Tecnologías
 
-## About Laravel
+PHP 8.2+
+Laravel 11
+MySQL
+Tailwind CSS
+Vite
+Chart.js 4.4.1
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Requisitos previos
+Antes de instalar el proyecto asegúrate de tener instalado:
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+PHP 8.2 o superior
+Composer
+Node.js 18 o superior
+MySQL 8.0 o superior
+Git
 
-## Learning Laravel
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Instalación local
+1. Clonar el repositorio
+bashgit clone https://github.com/tu-usuario/pipecell.git
+cd pipecell
+2. Instalar dependencias PHP
+bashcomposer install
+3. Instalar dependencias JavaScript
+bashnpm install
+4. Configurar el archivo de entorno
+bashcp .env.example .env
+Edita el .env con tus datos locales:
+dotenvAPP_NAME=PipeCell
+APP_ENV=local
+APP_DEBUG=true
+APP_URL=http://localhost
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=pipecell
+DB_USERNAME=root
+DB_PASSWORD=
+5. Generar la clave de la aplicación
+bashphp artisan key:generate
+6. Crear la base de datos
+Crea una base de datos llamada pipecell en tu gestor MySQL, luego ejecuta las migraciones:
+bashphp artisan migrate
+7. Poblar la base de datos con datos iniciales
+bashphp artisan db:seed
+Esto crea:
 
-## Laravel Sponsors
+Usuario administrador por defecto
+Cajas físicas iniciales (grupos A, B, C con 5 cajas cada uno)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+8. Compilar los assets
+bashnpm run dev
+```
 
-### Premium Partners
+---
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Credenciales por defecto
 
-## Contributing
+| Campo | Valor |
+|---|---|
+| Email | admin@pipecell.com |
+| Contraseña | password |
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+> Cambia estas credenciales inmediatamente después del primer inicio de sesión.
 
-## Code of Conduct
+---
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Estructura del proyecto
+```
+pipecell/
+├── app/
+│   ├── Enums/              # EstadoReparacion, EstadoCaja, RolUsuario
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── Admin/      # DashboardController, ReparacionController
+│   │   │   ├── Auth/       # LoginController
+│   │   ├── Requests/       # StoreReparacionRequest, UpdateReparacionRequest
+│   ├── Models/             # Reparacion, Caja, Abono, User
+│   ├── Services/           # ReparacionService
+├── database/
+│   ├── migrations/
+│   ├── seeders/
+├── resources/
+│   ├── views/
+│   │   ├── admin/          # dashboard, reparaciones
+│   │   ├── auth/           # login
+│   │   ├── layouts/        # admin.blade.php
+├── routes/
+│   └── web.php
 
-## Security Vulnerabilities
+Funcionalidades principales
+Reparaciones
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Registro de reparaciones con datos del cliente y equipo
+Asignación automática de caja física
+Estados: En proceso → Arreglado → Entregado
+Cambio de estado via AJAX sin recargar la página
+Edición de datos desde modal inline
+Registro de abonos parciales con control de saldo
+Alertas visuales para reparaciones con más de 8 y 15 días en proceso
+Filtros por estado, periodo y búsqueda en tiempo real
 
-## License
+Cajas
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Control de disponibilidad en tiempo real
+Validación de concurrencia con lockForUpdate() para evitar condiciones de carrera
+Una caja solo puede tener una reparación activa simultánea
+
+Dashboard
+
+Métricas KPI: ingresos, ganancia, completadas y reparaciones en proceso
+Gráfica de barras de ingresos mensuales con selector de año independiente (2026–2029)
+Gráfica de dona con distribución por estado del periodo seleccionado
+Gráfica de área con actividad diaria de los últimos 30 días
+Top 5 marcas más reparadas con escala dinámica
+Estado de cajas en tiempo real
+Cobros pendientes de reparaciones activas
+
+Autenticación
+
+Login con validación de estado de cuenta
+Middleware de redirección según rol
+Perfil de usuario con cambio de contraseña seguro
+
+
+Despliegue en producción
+1. Compilar assets para producción
+bashnpm run build
+2. Instalar dependencias sin paquetes de desarrollo
+bashcomposer install --no-dev --optimize-autoloader
+3. Configurar el .env de producción
+dotenvAPP_ENV=production
+APP_DEBUG=false
+APP_URL=https://tudominio.com
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=nombre_bd
+DB_USERNAME=usuario_bd
+DB_PASSWORD=contraseña_bd
+4. Subir al servidor
+Sube todos los archivos excepto node_modules y .git. Si no tienes acceso SSH, sube el proyecto comprimido y extráelo desde el administrador de archivos del hosting.
+5. Apuntar el dominio a la carpeta /public
+En cPanel configura el documento raíz del dominio hacia la carpeta public del proyecto, o agrega esto en el .htaccess de public_html:
+apacheRewriteEngine On
+RewriteRule ^(.*)$ public/$1 [L]
+
+Convención de ramas
+PrefijoUsofeat/Nueva funcionalidadfix/Corrección de bugshotfix/Corrección urgente en producciónrefactor/Mejoras de código sin cambiar funcionalidad
