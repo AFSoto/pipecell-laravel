@@ -37,7 +37,7 @@
             </p>
 
             <div class="flex flex-wrap gap-4 mb-12">
-                <a href="https://wa.me/57XXXXXXXXXX" target="_blank"
+                <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank"
                    class="inline-flex items-center gap-3 bg-green-500 hover:bg-green-400 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-green-500/25">
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.638-1.467A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.146 0-4.142-.685-5.77-1.848l-.413-.268-2.75.87.908-2.684-.293-.435A9.709 9.709 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z"/>
@@ -69,8 +69,8 @@
         <div class="relative hidden lg:block">
             <div class="relative rounded-3xl overflow-hidden shadow-2xl shadow-blue-900/50 border border-white/10">
                 {{-- Reemplaza este src con la foto real de tu local --}}
-                <img src="https://placehold.co/620x500/1e3a8a/93c5fd?text=📱+Foto+de+tu+local+aquí"
-                     alt="Local PipeCell" class="w-full object-cover">
+                <img src="{{ asset('img/landing/foto-local.webp') }}"
+                     alt="Local PipeCell" class="w-full h-[450px] object-cover">
                 <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-6">
                     <div class="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                         <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
@@ -116,9 +116,9 @@
     <div class="max-w-7xl mx-auto px-6">
         <div class="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-gray-100">
             @foreach([
-                ['+500', 'Reparaciones realizadas'],
+                ['+1000', 'Reparaciones realizadas'],
                 ['98%',  'Clientes satisfechos'],
-                ['3 meses', 'Garantía por reparación'],
+                ['1 mes', 'Garantía por reparación'],
                 ['24h',  'Tiempo promedio de entrega'],
             ] as [$num, $label])
             <div class="py-8 px-6 text-center">
@@ -243,8 +243,8 @@
         <div class="relative">
             <div class="rounded-3xl overflow-hidden shadow-xl">
                 {{-- Reemplaza este src con una foto real de tu taller --}}
-                <img src="https://placehold.co/620x520/eff6ff/1d4ed8?text=📷+Foto+del+taller+aquí"
-                     alt="Técnico trabajando en PipeCell" class="w-full object-cover">
+                <img src="{{ asset('img/landing/puesto-reparacion.webp') }}"
+                     alt="Técnico trabajando en PipeCell" class="w-full h-[520px] object-cover object-bottom">
             </div>
             <div class="absolute -bottom-6 -right-6 bg-blue-600 text-white rounded-2xl p-6 shadow-xl">
                 <p class="text-4xl font-bold">3+</p>
@@ -314,7 +314,7 @@
             <p class="text-gray-500 max-w-xl mx-auto text-lg">Técnicos certificados con años de experiencia en reparación de smartphones</p>
         </div>
 
-        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
 
             {{-- Técnico 1 --}}
             <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl hover:border-blue-100 transition-all duration-300 group">
@@ -364,29 +364,7 @@
                 </div>
             </div>
 
-            {{-- Técnico 3 --}}
-            <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl hover:border-blue-100 transition-all duration-300 group">
-                <div class="relative h-64 overflow-hidden bg-blue-50">
-                    {{-- Reemplaza este src con la foto real del técnico --}}
-                    <img src="https://placehold.co/440x300/dbeafe/1e40af?text=📷+Foto+Técnico+3"
-                         alt="Técnico 3" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                    <div class="absolute top-4 right-4 bg-emerald-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">
-                        Técnico Jr.
-                    </div>
-                </div>
-                <div class="p-6">
-                    <h3 class="text-xl font-bold text-gray-900 mb-1">Nombre Técnico 3</h3>
-                    <p class="text-blue-600 text-sm font-medium mb-3">Especialista en soldadura y carga</p>
-                    <p class="text-gray-500 text-sm leading-relaxed">
-                        Especializado en reparaciones de microtecnología, puertos de carga y soldadura de precisión en tarjetas madre.
-                    </p>
-                    <div class="mt-4 flex flex-wrap gap-2">
-                        <span class="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-medium">Soldadura</span>
-                        <span class="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-medium">Carga</span>
-                        <span class="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-medium">Micro</span>
-                    </div>
-                </div>
-            </div>
+            
 
         </div>
     </div>
@@ -553,7 +531,7 @@
             <div class="space-y-4 mb-8">
 
                 {{-- WhatsApp --}}
-                <a href="https://wa.me/57XXXXXXXXXX" target="_blank"
+                <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank"
                    class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-green-200 hover:bg-green-50/50 transition-all duration-300 group">
                     <div class="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -562,7 +540,7 @@
                     </div>
                     <div class="flex-1">
                         <p class="font-semibold text-gray-900">WhatsApp</p>
-                        <p class="text-sm text-gray-500">+57 XXX XXX XXXX &middot; Respuesta rápida</p>
+                        <p class="text-sm text-gray-500">+57 311 310 5244 &middot; Respuesta rápida</p>
                     </div>
                     <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -570,7 +548,7 @@
                 </a>
 
                 {{-- Teléfono --}}
-                <a href="tel:+57XXXXXXXXXX"
+                <a href="tel:+573113105244"
                    class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 transition-all duration-300 group">
                     <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -579,7 +557,7 @@
                     </div>
                     <div class="flex-1">
                         <p class="font-semibold text-gray-900">Llámanos</p>
-                        <p class="text-sm text-gray-500">+57 XXX XXX XXXX &middot; Atención directa</p>
+                        <p class="text-sm text-gray-500">+57 311 310 5244  &middot; Atención directa</p>
                     </div>
                     <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -587,7 +565,7 @@
                 </a>
 
                 {{-- Ubicación --}}
-                <div class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-purple-200 hover:bg-purple-50/50 transition-all duration-300 group cursor-default">
+                <a href="https://maps.app.goo.gl/a8CLPCiMUcQJdqjq8" target="_blank" class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-purple-200 hover:bg-purple-50/50 transition-all duration-300 group">
                     <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
@@ -596,9 +574,9 @@
                     </div>
                     <div>
                         <p class="font-semibold text-gray-900">Visítanos</p>
-                        <p class="text-sm text-gray-500">Tu dirección aquí, Ciudad</p>
+                        <p class="text-sm text-gray-500">Ver en Google Maps</p>
                     </div>
-                </div>
+                </a>
             </div>
 
             {{-- Horario --}}
@@ -630,11 +608,11 @@
         <div class="relative hidden lg:block">
             <div class="rounded-3xl overflow-hidden shadow-xl">
                 {{-- Reemplaza este src con una foto real del local/fachada --}}
-                <img src="https://placehold.co/620x700/f8fafc/1e40af?text=📷+Foto+fachada+o+local"
-                     alt="Local PipeCell" class="w-full object-cover">
+                <img src="{{ asset('img/landing/fachada-local.webp') }}"
+                     alt="Local PipeCell" class="w-full h-[600px] object-cover">
             </div>
             <div class="absolute -bottom-6 -left-6 bg-blue-600 text-white rounded-2xl p-6 shadow-xl">
-                <p class="text-3xl font-bold">+500</p>
+                <p class="text-3xl font-bold">+1000</p>
                 <p class="text-blue-200 text-sm mt-1">Reparaciones exitosas</p>
             </div>
         </div>
@@ -653,7 +631,7 @@
         <p class="text-blue-100 text-lg mb-8 max-w-2xl mx-auto leading-relaxed">
             Escríbenos ahora y te damos un diagnóstico sin costo. La reparación puede ser más fácil y económica de lo que crees.
         </p>
-        <a href="https://wa.me/57XXXXXXXXXX" target="_blank"
+        <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank"
            class="inline-flex items-center gap-3 bg-white text-blue-700 font-bold px-10 py-4 rounded-xl hover:bg-blue-50 transition-all duration-200 shadow-xl text-lg">
             <svg class="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.638-1.467A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.146 0-4.142-.685-5.77-1.848l-.413-.268-2.75.87.908-2.684-.293-.435A9.709 9.709 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z"/>
@@ -662,5 +640,14 @@
         </a>
     </div>
 </section>
+
+{{-- Botón flotante de WhatsApp --}}
+<a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1"
+   target="_blank"
+   class="fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-400 text-white p-4 rounded-full shadow-lg shadow-green-500/40 transition-all duration-200 hover:scale-105">
+    <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.638-1.467A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.146 0-4.142-.685-5.77-1.848l-.413-.268-2.75.87.908-2.684-.293-.435A9.709 9.709 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z"/>
+    </svg>
+</a>
 
 @endsection
