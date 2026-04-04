@@ -109,6 +109,14 @@ class ReparacionService
                 }
             }
 
+            // Regla de negocio: no se puede entregar si hay saldo pendiente.
+            if ($nuevoEstado === 'entregado' && ! $reparacion->estaPagada()) {
+                $pendiente = number_format($reparacion->saldo_pendiente, 0, ',', '.');
+                throw new \RuntimeException(
+                    "No se puede marcar como entregado: hay un saldo pendiente de \${$pendiente}."
+                );
+            }
+
             $reparacion->update([
                 'estado' => $nuevoEstado,
                 'fecha_entrega' => $nuevoEstado === 'entregado' ? now() : $reparacion->fecha_entrega,
