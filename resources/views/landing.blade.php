@@ -8,6 +8,11 @@
 
 @section('content')
 
+<style>
+.reveal-item{opacity:0;transform:translateY(28px);transition:opacity .65s cubic-bezier(.22,1,.36,1),transform .65s cubic-bezier(.22,1,.36,1)}
+.reveal-item.is-visible{opacity:1;transform:none}
+</style>
+
 {{-- ===================================================== --}}
 {{-- HERO                                                   --}}
 {{-- ===================================================== --}}
@@ -37,7 +42,7 @@
             </p>
 
             <div class="flex flex-wrap gap-4 mb-12">
-                <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank"
+                <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank" rel="noopener noreferrer"
                    class="inline-flex items-center gap-3 bg-green-500 hover:bg-green-400 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-green-500/25">
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.638-1.467A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.146 0-4.142-.685-5.77-1.848l-.413-.268-2.75.87.908-2.684-.293-.435A9.709 9.709 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z"/>
@@ -70,7 +75,7 @@
             <div class="relative rounded-3xl overflow-hidden shadow-2xl shadow-blue-900/50 border border-white/10">
                 {{-- Reemplaza este src con la foto real de tu local --}}
                 <img src="{{ asset('img/landing/foto-local.webp') }}"
-                     alt="Local PipeCell" class="w-full h-[450px] object-cover">
+                     alt="Local PipeCell" class="w-full h-[450px] object-cover" fetchpriority="high">
                 <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-6">
                     <div class="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                         <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
@@ -121,7 +126,7 @@
                 ['1 mes', 'Garantía por reparación'],
                 ['24h',  'Tiempo promedio de entrega'],
             ] as [$num, $label])
-            <div class="py-8 px-6 text-center">
+            <div class="py-8 px-6 text-center reveal-item">
                 <p class="text-3xl font-bold text-blue-600 mb-1">{{ $num }}</p>
                 <p class="text-sm text-gray-500">{{ $label }}</p>
             </div>
@@ -145,7 +150,7 @@
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
             {{-- Pantalla --}}
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group reveal-item">
                 <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
@@ -159,7 +164,7 @@
             </div>
 
             {{-- Batería --}}
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group reveal-item">
                 <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -173,7 +178,7 @@
             </div>
 
             {{-- Software --}}
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group reveal-item">
                 <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
@@ -187,7 +192,7 @@
             </div>
 
             {{-- Cámara --}}
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group reveal-item">
                 <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
@@ -202,7 +207,7 @@
             </div>
 
             {{-- Pin de carga --}}
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group reveal-item">
                 <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2zm0-11h.01M12 7h.01M17 7h.01"/>
@@ -216,7 +221,7 @@
             </div>
 
             {{-- Accesorios --}}
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/80 transition-all duration-300 group reveal-item">
                 <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
@@ -244,7 +249,7 @@
             <div class="rounded-3xl overflow-hidden shadow-xl">
                 {{-- Reemplaza este src con una foto real de tu taller --}}
                 <img src="{{ asset('img/landing/puesto-reparacion.webp') }}"
-                     alt="Técnico trabajando en PipeCell" class="w-full h-[520px] object-cover object-bottom">
+                     alt="Técnico trabajando en PipeCell" class="w-full h-[520px] object-cover object-bottom" loading="lazy">
             </div>
             <div class="absolute -bottom-6 -right-6 bg-blue-600 text-white rounded-2xl p-6 shadow-xl">
                 <p class="text-4xl font-bold">3+</p>
@@ -317,11 +322,11 @@
         <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
 
             {{-- Técnico 1 --}}
-            <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl hover:border-blue-100 transition-all duration-300 group">
+            <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl hover:border-blue-100 transition-all duration-300 group reveal-item">
                 <div class="relative h-64 overflow-hidden bg-blue-50">
                     {{-- Reemplaza este src con la foto real del técnico --}}
                     <img src="https://placehold.co/440x300/dbeafe/1e40af?text=📷+Foto+Técnico+1"
-                         alt="Técnico 1" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         alt="Técnico 1" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
                     <div class="absolute top-4 right-4 bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">
                         Técnico Senior
                     </div>
@@ -341,11 +346,11 @@
             </div>
 
             {{-- Técnico 2 --}}
-            <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl hover:border-blue-100 transition-all duration-300 group">
+            <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl hover:border-blue-100 transition-all duration-300 group reveal-item">
                 <div class="relative h-64 overflow-hidden bg-blue-50">
                     {{-- Reemplaza este src con la foto real del técnico --}}
                     <img src="https://placehold.co/440x300/dbeafe/1e40af?text=📷+Foto+Técnico+2"
-                         alt="Técnico 2" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         alt="Técnico 2" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
                     <div class="absolute top-4 right-4 bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">
                         Técnico Senior
                     </div>
@@ -385,11 +390,11 @@
         <div class="grid md:grid-cols-2 gap-6">
 
             {{-- Trabajo 1 --}}
-            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300">
+            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 reveal-item">
                 <div class="relative h-56 overflow-hidden">
                     {{-- Reemplaza este src con foto real del trabajo --}}
                     <img src="https://placehold.co/700x400/eff6ff/1d4ed8?text=📷+Samsung+Galaxy+S23+-+Pantalla"
-                         alt="Samsung Galaxy S23" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         alt="Samsung Galaxy S23" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                     <span class="absolute bottom-4 left-4 bg-emerald-500 text-white text-xs font-semibold px-3 py-1 rounded-full">Entregado</span>
                 </div>
@@ -405,11 +410,11 @@
             </div>
 
             {{-- Trabajo 2 --}}
-            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300">
+            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 reveal-item">
                 <div class="relative h-56 overflow-hidden">
                     {{-- Reemplaza este src con foto real del trabajo --}}
                     <img src="https://placehold.co/700x400/f0fdf4/15803d?text=📷+iPhone+14+Pro+-+Batería"
-                         alt="iPhone 14 Pro" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         alt="iPhone 14 Pro" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                     <span class="absolute bottom-4 left-4 bg-emerald-500 text-white text-xs font-semibold px-3 py-1 rounded-full">Entregado</span>
                 </div>
@@ -425,11 +430,11 @@
             </div>
 
             {{-- Trabajo 3 --}}
-            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300">
+            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 reveal-item">
                 <div class="relative h-56 overflow-hidden">
                     {{-- Reemplaza este src con foto real del trabajo --}}
                     <img src="https://placehold.co/700x400/fff7ed/c2410c?text=📷+Redmi+Note+12+-+Pin+Carga"
-                         alt="Redmi Note 12" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         alt="Redmi Note 12" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                     <span class="absolute bottom-4 left-4 bg-emerald-500 text-white text-xs font-semibold px-3 py-1 rounded-full">Entregado</span>
                 </div>
@@ -445,11 +450,11 @@
             </div>
 
             {{-- Trabajo 4 --}}
-            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300">
+            <div class="group rounded-3xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 reveal-item">
                 <div class="relative h-56 overflow-hidden">
                     {{-- Reemplaza este src con foto real del trabajo --}}
                     <img src="https://placehold.co/700x400/fdf4ff/7e22ce?text=📷+Moto+G54+-+Software"
-                         alt="Moto G54" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         alt="Moto G54" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                     <span class="absolute bottom-4 left-4 bg-emerald-500 text-white text-xs font-semibold px-3 py-1 rounded-full">Entregado</span>
                 </div>
@@ -489,7 +494,7 @@
                 ['CG', 'Carlos García',    'green',
                  '"Mi Redmi no cargaba y pensé que tocaba comprarlo nuevo. En PipeCell lo repararon el mismo día a un precio excelente."'],
             ] as [$initials, $name, $color, $review])
-            <div class="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm hover:shadow-md transition-shadow reveal-item">
                 <div class="flex gap-1 mb-4">
                     @for ($i = 0; $i < 5; $i++)
                     <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
@@ -531,7 +536,7 @@
             <div class="space-y-4 mb-8">
 
                 {{-- WhatsApp --}}
-                <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank"
+                <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank" rel="noopener noreferrer"
                    class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-green-200 hover:bg-green-50/50 transition-all duration-300 group">
                     <div class="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -565,7 +570,7 @@
                 </a>
 
                 {{-- Ubicación --}}
-                <a href="https://maps.app.goo.gl/a8CLPCiMUcQJdqjq8" target="_blank" class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-purple-200 hover:bg-purple-50/50 transition-all duration-300 group">
+                <a href="https://maps.app.goo.gl/a8CLPCiMUcQJdqjq8" target="_blank" rel="noopener noreferrer" class="flex items-center gap-4 p-5 rounded-2xl border border-gray-100 hover:border-purple-200 hover:bg-purple-50/50 transition-all duration-300 group">
                     <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
@@ -631,7 +636,7 @@
         <p class="text-blue-100 text-lg mb-8 max-w-2xl mx-auto leading-relaxed">
             Escríbenos ahora y te damos un diagnóstico sin costo. La reparación puede ser más fácil y económica de lo que crees.
         </p>
-        <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank"
+        <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1" target="_blank" rel="noopener noreferrer"
            class="inline-flex items-center gap-3 bg-white text-blue-700 font-bold px-10 py-4 rounded-xl hover:bg-blue-50 transition-all duration-200 shadow-xl text-lg">
             <svg class="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.638-1.467A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.146 0-4.142-.685-5.77-1.848l-.413-.268-2.75.87.908-2.684-.293-.435A9.709 9.709 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z"/>
@@ -641,9 +646,27 @@
     </div>
 </section>
 
+<script>
+(function () {
+    var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+            var siblings = Array.from(entry.target.parentElement.children).filter(function (el) {
+                return el.classList.contains('reveal-item');
+            });
+            var idx = siblings.indexOf(entry.target);
+            entry.target.style.transitionDelay = (idx * 90) + 'ms';
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+        });
+    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal-item').forEach(function (el) { io.observe(el); });
+})();
+</script>
+
 {{-- Botón flotante de WhatsApp --}}
 <a href="https://wa.me/573113105244?text=Hola%2C%20quiero%20cotizar%20una%20reparaci%C3%B3n%20%F0%9F%93%B1"
-   target="_blank"
+   target="_blank" rel="noopener noreferrer"
    class="fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-400 text-white p-4 rounded-full shadow-lg shadow-green-500/40 transition-all duration-200 hover:scale-105">
     <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.638-1.467A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.146 0-4.142-.685-5.77-1.848l-.413-.268-2.75.87.908-2.684-.293-.435A9.709 9.709 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z"/>
