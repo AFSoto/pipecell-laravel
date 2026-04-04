@@ -26,7 +26,7 @@ Route::view('/', 'landing')->name('landing');
 // El middleware 'guest' impide que un usuario ya logueado vea el login
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
-    Route::post('/login', [LoginController::class, 'login']);
+    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:login');
 });
 
 // ── 3. Ruta de logout (solo para usuarios logueados) ──
