@@ -69,6 +69,15 @@ class User extends Authenticatable
         return $this->hasMany(Reparacion::class, 'tecnico_id');
     }
 
+    /**
+     * Ventas registradas por este usuario.
+     * Ejemplo: $usuario->ventas → colección de Venta
+     */
+    public function ventas(): HasMany
+    {
+        return $this->hasMany(Venta::class);
+    }
+
     // ── Helpers (métodos de ayuda) ──
 
     /**

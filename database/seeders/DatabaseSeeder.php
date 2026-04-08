@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             UserSeeder::class,
             CajaSeeder::class,
+            CategoriaSeeder::class, // Categorías del inventario de productos
         ]);
     }
 }
