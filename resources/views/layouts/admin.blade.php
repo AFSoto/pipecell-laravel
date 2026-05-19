@@ -119,27 +119,34 @@
                         <span class="sidebar-text whitespace-nowrap">Cajas</span>
                     </a>
 
-                    {{-- Clientes --}}
-                    <a href="#"
-                       class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-gray-400 hover:bg-white/5 hover:text-white"
-                       title="Clientes">
+                    {{-- Separador de sección Inventario --}}
+                    <div class="sidebar-text pt-3 pb-1 px-3">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Inventario</span>
+                    </div>
+
+                    {{-- Categorías --}}
+                    <a href="{{ route('admin.categorias.index') }}"
+                       class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+                              {{ request()->routeIs('admin.categorias.*') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white' }}"
+                       title="Categorías">
+                        {{-- Ícono de etiquetas (tags) --}}
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"/>
                         </svg>
-                        <span class="sidebar-text whitespace-nowrap">Clientes</span>
+                        <span class="sidebar-text whitespace-nowrap">Categorías</span>
                     </a>
 
-                    <div class="border-t border-white/10 my-4"></div>
-
-                    {{-- Inventario (próximamente) --}}
-                    <span class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 cursor-not-allowed"
-                          title="Inventario (Próximamente)">
+                    {{-- Productos --}}
+                    <a href="{{ route('admin.productos.index') }}"
+                       class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+                              {{ request()->routeIs('admin.productos.*') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white' }}"
+                       title="Productos">
+                        {{-- Ícono de caja/paquete --}}
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
                         </svg>
-                        <span class="sidebar-text whitespace-nowrap">Inventario</span>
-                        <span class="sidebar-text ml-auto text-xs bg-white/5 text-gray-500 px-2 py-0.5 rounded-full whitespace-nowrap">Pronto</span>
-                    </span>
+                        <span class="sidebar-text whitespace-nowrap">Productos</span>
+                    </a>
 
                 </nav>
 
