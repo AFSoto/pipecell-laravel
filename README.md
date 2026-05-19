@@ -23,7 +23,7 @@ Git
 
 Instalación local
 1. Clonar el repositorio
-bashgit clone https://github.com/tu-usuario/pipecell.git
+bashgit clone https://github.com/AFSoto/pipecell-laravel.git
 cd pipecell
 2. Instalar dependencias PHP
 bashcomposer install
