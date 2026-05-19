@@ -4,7 +4,7 @@ Sistema de administración para talleres de reparación de celulares. Permite ge
 Tecnologías
 
 PHP 8.2+
-Laravel 11
+Laravel 12
 MySQL
 Tailwind CSS
 Vite
