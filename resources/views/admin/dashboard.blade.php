@@ -810,10 +810,11 @@
                     ticks: {
                         color: '#94a3b8',
                         font: { size: 10 },
-                        stepSize: 1,       // Solo números enteros (no puede haber 2.5 reparaciones)
+                        stepSize: 5,
                         precision: 0,
                     },
                     min: 0,
+                    suggestedMax: 35,
                 }
             }
         }

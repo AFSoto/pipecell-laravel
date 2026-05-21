@@ -95,13 +95,28 @@
 {{-- FILTROS — form GET unificado   --}}
 {{-- ============================== --}}
 @php
+    // Obtiene el filtro de estado desde la URL.
+    // Si no existe, usa "en_proceso" por defecto.
     $fEstado  = request('estado', 'en_proceso');
+
+    // Obtiene el filtro de periodo.
+    // Por defecto será "mes".
     $fPeriodo = request('periodo', 'mes');
+
+    // Obtiene el texto de búsqueda
     $fBuscar  = request('buscar');
+
+    // Obtiene la fecha inicial personalizada
     $fDesde   = request('desde');
+
+    // Obtiene la fecha final personalizada
     $fHasta   = request('hasta');
 
+    // Determina si el estado actual
+    // no necesita filtro de fechas
     $sinFiltroFecha  = in_array($fEstado, ['en_proceso', 'arreglado']);
+
+    // Verifica si existen filtros adicionales activos
     $hayFiltrosExtra = $fBuscar
         || ($fEstado && $fEstado !== 'todos')
         || (!$sinFiltroFecha && $fPeriodo && $fPeriodo !== 'mes')
@@ -111,65 +126,102 @@
 <form method="GET" action="{{ route('admin.reparaciones.index') }}" id="form-filtros">
     <div class="flex flex-wrap gap-3 mb-3">
 
-        {{-- Select Estado --}}
+        {{-- Select para filtrar por estado de la reparación --}}
         <select name="estado" id="select-estado"
                 class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
+
+            {{-- Mostrar todas las reparaciones --}}
             <option value="todos"      {{ $fEstado === 'todos' ? 'selected' : '' }}>Todos</option>
+
+            {{-- Reparaciones que aún están en proceso --}}
             <option value="en_proceso" {{ (!$fEstado || $fEstado === 'en_proceso') ? 'selected' : '' }}>En proceso</option>
+
+            {{-- Reparaciones arregladas --}}
             <option value="arreglado"  {{ $fEstado === 'arreglado'              ? 'selected' : '' }}>Arreglados</option>
+
+            {{-- Reparaciones ya entregadas --}}
             <option value="entregado"  {{ $fEstado === 'entregado'              ? 'selected' : '' }}>Entregados</option>
         </select>
 
-        {{-- Select Periodo (oculto para en_proceso y arreglado) --}}
+        {{-- Select de periodo.
+             Se oculta cuando el estado no necesita filtros de fecha --}}
         <div id="periodo-container" class="{{ $sinFiltroFecha ? 'hidden' : '' }}">
+
             <select name="periodo" id="select-periodo"
                     class="h-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer">
+
+                {{-- Mostrar reparaciones del día actual --}}
                 <option value="hoy"          {{ $fPeriodo === 'hoy'          ? 'selected' : '' }}>Hoy</option>
+
+                {{-- Mostrar reparaciones de la semana --}}
                 <option value="semana"        {{ $fPeriodo === 'semana'        ? 'selected' : '' }}>Esta semana</option>
+
+                {{-- Mostrar reparaciones del mes actual --}}
                 <option value="mes"           {{ (!$fPeriodo || $fPeriodo === 'mes') ? 'selected' : '' }}>Este mes</option>
+
+                {{-- Mostrar reparaciones del mes pasado --}}
                 <option value="mes_pasado"    {{ $fPeriodo === 'mes_pasado'    ? 'selected' : '' }}>Mes pasado</option>
+
+                {{-- Mostrar reparaciones de los últimos 3 meses --}}
                 <option value="trimestre"     {{ $fPeriodo === 'trimestre'     ? 'selected' : '' }}>Últimos 3 meses</option>
+
+                {{-- Mostrar reparaciones del año actual --}}
                 <option value="anio"          {{ $fPeriodo === 'anio'          ? 'selected' : '' }}>Este año</option>
+
+                {{-- Activar búsqueda personalizada por fechas --}}
                 <option value="personalizado" {{ $fPeriodo === 'personalizado' ? 'selected' : '' }}>Personalizado</option>
             </select>
         </div>
 
-        {{-- Campos desde/hasta (solo para periodo=personalizado) --}}
+        {{-- Campos de fecha personalizada.
+             Solo se muestran cuando el periodo es "personalizado" --}}
         <div id="fechas-personalizado"
              class="{{ $fPeriodo === 'personalizado' && !$sinFiltroFecha ? 'flex gap-2' : 'hidden' }}">
+
+            {{-- Fecha inicial --}}
             <input type="date" name="desde" value="{{ $fDesde }}"
                    class="px-3 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+
+            {{-- Fecha final --}}
             <input type="date" name="hasta" value="{{ $fHasta }}"
                    class="px-3 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
         </div>
 
-        {{-- Buscador --}}
+        {{-- Contenedor del buscador --}}
         <div class="flex flex-1 min-w-56 gap-2">
+
+            {{-- Input de búsqueda --}}
             <div class="relative flex-1">
+
+                {{-- Icono de búsqueda --}}
                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                 </div>
+
+                {{-- Campo para buscar por cliente, teléfono o marca --}}
                 <input type="text" name="buscar" id="input-buscar" value="{{ $fBuscar }}"
                        placeholder="Buscar por cliente, teléfono, marca..."
                        class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
             </div>
 
-            {{-- Botón buscar --}}
+            {{-- Botón para ejecutar la búsqueda --}}
             <button type="submit"
                     class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-blue-600 transition"
                     title="Buscar">
+
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                 </svg>
             </button>
 
-            {{-- Botón limpiar búsqueda (X) --}}
+            {{-- Botón para limpiar únicamente el buscador --}}
             @if($fBuscar)
                 <button type="button" onclick="limpiarBusqueda()"
                         class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-500 transition"
                         title="Limpiar búsqueda">
+
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -177,13 +229,15 @@
             @endif
         </div>
 
-        {{-- Botón limpiar todos los filtros --}}
+        {{-- Botón para reiniciar todos los filtros --}}
         @if($hayFiltrosExtra)
             <a href="{{ route('admin.reparaciones.index') }}"
                class="inline-flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition whitespace-nowrap">
+
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
+
                 Limpiar filtros
             </a>
         @endif
