@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CajaController;
 use App\Http\Controllers\Admin\PerfilController;
@@ -27,6 +28,12 @@ Route::view('/', 'landing')->name('landing');
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:login');
+
+    // ── Recuperación de contraseña ──
+    Route::get('/olvide-contrasena', [PasswordResetController::class, 'showForgotForm'])->name('password.request');
+    Route::post('/olvide-contrasena', [PasswordResetController::class, 'sendResetLink'])->name('password.email')->middleware('throttle:6,1');
+    Route::get('/restablecer-contrasena/{token}', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
+    Route::post('/restablecer-contrasena', [PasswordResetController::class, 'resetPassword'])->name('password.update');
 });
 
 // ── 3. Ruta de logout (solo para usuarios logueados) ──
