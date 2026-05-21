@@ -45,9 +45,9 @@ class ReparacionController extends Controller
         // Fecha final personalizada
         $hasta   = $request->input('hasta');
 
-        // Estados que normalmente tienen pocos registros,
-        // por lo tanto no requieren filtro de fechas
-        $sinFiltroFecha = in_array($estado, ['en_proceso', 'arreglado']);
+        // Solo en_proceso no requiere filtro de fechas
+        // (se quiere ver todo lo que está pendiente sin importar cuándo entró)
+        $sinFiltroFecha = $estado === 'en_proceso';
 
 
         // Construcción inicial de la consulta

@@ -112,9 +112,8 @@
     // Obtiene la fecha final personalizada
     $fHasta   = request('hasta');
 
-    // Determina si el estado actual
-    // no necesita filtro de fechas
-    $sinFiltroFecha  = in_array($fEstado, ['en_proceso', 'arreglado']);
+    // Solo en_proceso no necesita filtro de fechas
+    $sinFiltroFecha  = $fEstado === 'en_proceso';
 
     // Verifica si existen filtros adicionales activos
     $hayFiltrosExtra = $fBuscar
@@ -1216,7 +1215,7 @@ if (btnAbono) {
      * - Para los demás → mostrar periodo y enviar el form
      */
     selectEstado.addEventListener('change', function () {
-        const sinFecha = ['en_proceso', 'arreglado'].includes(this.value);
+        const sinFecha = this.value === 'en_proceso';
         periodoContainer.classList.toggle('hidden', sinFecha);
         if (sinFecha) fechasPersonalizado.classList.add('hidden');
         formFiltros.submit();
