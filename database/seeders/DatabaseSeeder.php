@@ -21,6 +21,8 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             CajaSeeder::class,
             CategoriaSeeder::class, // Categorías del inventario de productos
+            ReparacionSeeder::class,
+
         ]);
     }
 }
