@@ -308,7 +308,7 @@
                 @foreach($reparaciones as $rep)
                 @php
     $diasEnProceso = $rep->estado->value === 'en_proceso'
-        ? $rep->created_at->diffInDays(now())
+        ? (int) floor($rep->created_at->diffInDays(now()))
         : null;
     $filaClase = match(true) {
         $diasEnProceso >= 15 => 'hover:bg-red-50/80 bg-red-50/40',
