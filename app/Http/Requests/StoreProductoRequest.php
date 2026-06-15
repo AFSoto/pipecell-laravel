@@ -27,6 +27,8 @@ class StoreProductoRequest extends FormRequest
             'nombre'            => ['required', 'string', 'max:150'],
             'descripcion'       => ['nullable', 'string'],
             'marco'             => ['nullable', 'boolean', $this->reglMarco()],
+            'marca'             => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('marca', 'La marca es obligatoria para pantallas.')],
+            'referencia'        => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('referencia', 'La referencia es obligatoria para pantallas.')],
 
             'precio_compra'     => ['required', 'numeric', 'min:0'],
             'precio_venta'      => ['required', 'numeric', 'min:0'],
@@ -61,13 +63,22 @@ class StoreProductoRequest extends FormRequest
         ];
     }
 
-    // Regla personalizada: marco es obligatorio cuando la categoría es de Pantallas
     private function reglMarco(): \Closure
     {
         return function ($attribute, $value, $fail) {
             $categoria = Categoria::find($this->categoria_id);
             if ($categoria && str_contains(strtolower($categoria->nombre), 'pantalla') && is_null($value)) {
                 $fail('Debes indicar si la pantalla viene con marco o no.');
+            }
+        };
+    }
+
+    private function reglaExclusivaPantalla(string $campo, string $mensaje): \Closure
+    {
+        return function ($attribute, $value, $fail) use ($mensaje) {
+            $categoria = Categoria::find($this->categoria_id);
+            if ($categoria && str_contains(strtolower($categoria->nombre), 'pantalla') && empty($value)) {
+                $fail($mensaje);
             }
         };
     }

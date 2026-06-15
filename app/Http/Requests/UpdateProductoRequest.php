@@ -32,6 +32,8 @@ class UpdateProductoRequest extends FormRequest
             'nombre'            => ['required', 'string', 'max:150'],
             'descripcion'       => ['nullable', 'string'],
             'marco'             => ['nullable', 'boolean', $this->reglaMarco()],
+            'marca'             => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('La marca es obligatoria para pantallas.')],
+            'referencia'        => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('La referencia es obligatoria para pantallas.')],
             'precio_compra'     => ['required', 'numeric', 'min:0'],
             'precio_venta'      => ['required', 'numeric', 'min:0'],
             'stock'             => ['required', 'integer', 'min:0'],
@@ -66,6 +68,16 @@ class UpdateProductoRequest extends FormRequest
             $categoria = Categoria::find($this->categoria_id);
             if ($categoria && str_contains(strtolower($categoria->nombre), 'pantalla') && is_null($value)) {
                 $fail('Debes indicar si la pantalla viene con marco o no.');
+            }
+        };
+    }
+
+    private function reglaExclusivaPantalla(string $mensaje): \Closure
+    {
+        return function ($attribute, $value, $fail) use ($mensaje) {
+            $categoria = Categoria::find($this->categoria_id);
+            if ($categoria && str_contains(strtolower($categoria->nombre), 'pantalla') && empty($value)) {
+                $fail($mensaje);
             }
         };
     }
