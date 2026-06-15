@@ -197,7 +197,7 @@
                                     {{ $producto->tipoProducto->nombre }}
                                 </span>
                             @endif
-                            @if (!is_null($producto->marco))
+                            @if (!is_null($producto->getRawOriginal('marco')))
                                 <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 {{ $producto->marco ? 'bg-violet-600 text-white' : 'bg-slate-400 text-white' }} rounded-full">
                                     {{ $producto->marco ? 'Con marco' : 'Sin marco' }}
                                 </span>
@@ -889,8 +889,6 @@
         const marcoNo = document.getElementById(`${prefijo}-marco-no`);
 
         const partes = ['Pantalla'];
-        if (marcoSi?.checked)      partes.push('Con Marco');
-        else if (marcoNo?.checked) partes.push('Sin Marco');
 
         const marca = document.getElementById(`${prefijo}-marca`)?.value.trim();
         if (marca) partes.push(marca);
