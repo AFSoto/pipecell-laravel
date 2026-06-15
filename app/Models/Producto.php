@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 
 /**
  * Modelo de producto del inventario.
@@ -22,9 +22,11 @@ class Producto extends Model
 
     protected $fillable = [
         'categoria_id',
+        'tipo_producto_id',
         'codigo',
         'nombre',
         'descripcion',
+        'marco',
         'precio_compra',
         'precio_venta',
         'stock',
@@ -41,6 +43,7 @@ class Producto extends Model
         return [
             'precio_compra' => 'decimal:2',
             'precio_venta'  => 'decimal:2',
+            'marco'         => 'boolean',
         ];
     }
 
@@ -53,6 +56,11 @@ class Producto extends Model
     public function categoria(): BelongsTo
     {
         return $this->belongsTo(Categoria::class);
+    }
+
+    public function tipoProducto(): BelongsTo
+    {
+        return $this->belongsTo(TipoProducto::class);
     }
 
     /**

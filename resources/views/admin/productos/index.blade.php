@@ -208,6 +208,7 @@
                         <button onclick="abrirEditarProducto(
                                     {{ $producto->id }},
                                     {{ $producto->categoria_id }},
+                                    {{ $producto->tipo_producto_id ?? 'null' }},
                                     '{{ addslashes($producto->codigo ?? '') }}',
                                     '{{ addslashes($producto->nombre) }}',
                                     '{{ addslashes($producto->descripcion ?? '') }}',
@@ -215,6 +216,7 @@
                                     {{ $producto->precio_venta }},
                                     {{ $producto->stock }},
                                     {{ $producto->stock_minimo }},
+                                    {{ is_null($producto->marco) ? 'null' : ($producto->marco ? '1' : '0') }},
                                     {{ $producto->imagenes->map(fn($i) => ['id' => $i->id, 'path' => $i->path, 'es_principal' => $i->es_principal])->toJson() }}
                                 )"
                                 class="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
@@ -304,11 +306,12 @@
               class="p-6 space-y-5">
             @csrf
 
-            {{-- Categoría y Código --}}
+            {{-- Categoría y Tipo --}}
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Categoría *</label>
                     <select name="categoria_id" required
+                            onchange="toggleMarco(this.value, 'crear')"
                             class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                         <option value="">Selecciona...</option>
                         @foreach ($categorias as $cat)
@@ -319,21 +322,54 @@
                     </select>
                 </div>
                 <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Tipo de producto</label>
+                    <select name="tipo_producto_id"
+                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        <option value="">Sin tipo</option>
+                        @foreach ($tiposProducto as $tipo)
+                            <option value="{{ $tipo->id }}" {{ old('tipo_producto_id') == $tipo->id ? 'selected' : '' }}>
+                                {{ $tipo->nombre }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+
+            {{-- Campo marco (solo visible para categoría Pantallas) --}}
+            <div id="crear-seccion-marco" class="hidden bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <label class="text-xs font-medium text-amber-800 mb-2 block">¿La pantalla viene con marco? *</label>
+                <div class="flex items-center gap-6">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="marco" value="1"
+                               {{ old('marco') === '1' ? 'checked' : '' }}
+                               class="w-4 h-4 text-blue-600 accent-blue-600">
+                        <span class="text-sm text-gray-700">Sí, viene con marco</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="marco" value="0"
+                               {{ old('marco') === '0' ? 'checked' : '' }}
+                               class="w-4 h-4 text-blue-600 accent-blue-600">
+                        <span class="text-sm text-gray-700">No, sin marco</span>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Código y Nombre --}}
+            <div class="grid grid-cols-2 gap-4">
+                <div>
                     <label class="text-xs text-gray-500 mb-1 block">Código / SKU</label>
                     <input type="text" name="codigo" maxlength="50"
                            placeholder="Ej: SAM-S24-LCD"
                            value="{{ old('codigo') }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
-            </div>
-
-            {{-- Nombre --}}
-            <div>
-                <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
-                <input type="text" name="nombre" required maxlength="150"
-                       placeholder="Ej: Pantalla Samsung Galaxy S24"
-                       value="{{ old('nombre') }}"
-                       class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
+                    <input type="text" name="nombre" required maxlength="150"
+                           placeholder="Ej: Pantalla Samsung Galaxy S24"
+                           value="{{ old('nombre') }}"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
             </div>
 
             {{-- Descripción --}}
@@ -449,11 +485,12 @@
             @csrf
             @method('PATCH')
 
-            {{-- Categoría y Código --}}
+            {{-- Categoría y Tipo --}}
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Categoría *</label>
                     <select name="categoria_id" id="editar-categoria_id" required
+                            onchange="toggleMarco(this.value, 'editar')"
                             class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                         @foreach ($categorias as $cat)
                             <option value="{{ $cat->id }}">{{ $cat->nombre }}</option>
@@ -461,17 +498,46 @@
                     </select>
                 </div>
                 <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Tipo de producto</label>
+                    <select name="tipo_producto_id" id="editar-tipo_producto_id"
+                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        <option value="">Sin tipo</option>
+                        @foreach ($tiposProducto as $tipo)
+                            <option value="{{ $tipo->id }}">{{ $tipo->nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+
+            {{-- Campo marco (solo visible para categoría Pantallas) --}}
+            <div id="editar-seccion-marco" class="hidden bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <label class="text-xs font-medium text-amber-800 mb-2 block">¿La pantalla viene con marco? *</label>
+                <div class="flex items-center gap-6">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="marco" id="editar-marco-si" value="1"
+                               class="w-4 h-4 text-blue-600 accent-blue-600">
+                        <span class="text-sm text-gray-700">Sí, viene con marco</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="marco" id="editar-marco-no" value="0"
+                               class="w-4 h-4 text-blue-600 accent-blue-600">
+                        <span class="text-sm text-gray-700">No, sin marco</span>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Código y Nombre --}}
+            <div class="grid grid-cols-2 gap-4">
+                <div>
                     <label class="text-xs text-gray-500 mb-1 block">Código / SKU</label>
                     <input type="text" name="codigo" id="editar-codigo" maxlength="50"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
-            </div>
-
-            {{-- Nombre --}}
-            <div>
-                <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
-                <input type="text" name="nombre" id="editar-nombre" required maxlength="150"
-                       class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
+                    <input type="text" name="nombre" id="editar-nombre" required maxlength="150"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
             </div>
 
             {{-- Descripción --}}
@@ -549,6 +615,27 @@
 @section('scripts')
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    // IDs de categorías cuyo nombre contiene "pantalla" (para mostrar campo marco)
+    const categoriasConMarco = @json(
+        $categorias->filter(fn($c) => str_contains(strtolower($c->nombre), 'pantalla'))->pluck('id')->values()
+    );
+
+    /**
+     * Muestra u oculta la sección de marco según si la categoría es de Pantallas.
+     * @param {string|number} categoriaId  ID de la categoría seleccionada
+     * @param {string}        prefijo      'crear' o 'editar'
+     */
+    function toggleMarco(categoriaId, prefijo) {
+        const seccion = document.getElementById(`${prefijo}-seccion-marco`);
+        if (categoriasConMarco.includes(parseInt(categoriaId))) {
+            seccion.classList.remove('hidden');
+        } else {
+            seccion.classList.add('hidden');
+            // Limpiar selección cuando se oculta para no enviar valor incorrecto
+            seccion.querySelectorAll('input[type=radio]').forEach(r => r.checked = false);
+        }
+    }
 
     // ══════════════════════════════════════
     // FORMATEO DE PRECIOS (estilo colombiano)
@@ -655,24 +742,28 @@
      * @param {number} stockMinimo  Stock mínimo actual
      * @param {Array}  imagenes     Array de objetos {id, path, es_principal}
      */
-    function abrirEditarProducto(id, categoriaId, codigo, nombre, descripcion,
-                                  precioCompra, precioVenta, stock, stockMinimo, imagenes) {
-        // Actualizar action del form con el ID correcto
+    function abrirEditarProducto(id, categoriaId, tipoProductoId, codigo, nombre, descripcion,
+                                  precioCompra, precioVenta, stock, stockMinimo, marco, imagenes) {
         const baseUrl = '{{ url("admin/productos") }}';
         document.getElementById('form-editar-producto').action = `${baseUrl}/${id}`;
 
-        // Subtítulo del modal
         document.getElementById('editar-producto-subtitulo').textContent = nombre;
 
-        // Pre-llenar campos de texto
         document.getElementById('editar-codigo').value       = codigo;
         document.getElementById('editar-nombre').value       = nombre;
         document.getElementById('editar-descripcion').value  = descripcion;
         document.getElementById('editar-stock').value        = stock;
         document.getElementById('editar-stock_minimo').value = stockMinimo;
 
-        // Seleccionar la categoría correcta en el select
-        document.getElementById('editar-categoria_id').value = categoriaId;
+        document.getElementById('editar-categoria_id').value      = categoriaId;
+        document.getElementById('editar-tipo_producto_id').value  = tipoProductoId ?? '';
+
+        // Mostrar/ocultar marco y pre-seleccionar valor
+        toggleMarco(categoriaId, 'editar');
+        if (marco !== null) {
+            const radioId = marco == 1 ? 'editar-marco-si' : 'editar-marco-no';
+            document.getElementById(radioId).checked = true;
+        }
 
         // Campos de precio: el visual muestra con puntos, el hidden guarda número puro
         document.getElementById('editar-precio_compra').value        = precioCompra;

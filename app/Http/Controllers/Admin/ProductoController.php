@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateProductoRequest;
 use App\Models\Categoria;
 use App\Models\Producto;
 use App\Models\ProductoImagen;
+use App\Models\TipoProducto;
 use App\Services\ProductoService;
 use Illuminate\Http\Request;
 
@@ -51,10 +52,10 @@ class ProductoController extends Controller
         // Paginamos de 12 en 12 para el grid de 4 columnas (3 filas completas)
         $productos = $query->paginate(12)->withQueryString();
 
-        // Categorías activas para el select del filtro y para el modal de creación
-        $categorias = Categoria::activas()->orderBy('nombre')->get();
+        $categorias     = Categoria::activas()->orderBy('nombre')->get();
+        $tiposProducto  = TipoProducto::orderBy('nombre')->get();
 
-        return view('admin.productos.index', compact('productos', 'categorias'));
+        return view('admin.productos.index', compact('productos', 'categorias', 'tiposProducto'));
     }
 
     /**
