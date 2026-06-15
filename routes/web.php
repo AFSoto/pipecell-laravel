@@ -1,10 +1,12 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\CategoriaController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CajaController;
 use App\Http\Controllers\Admin\PerfilController;
+use App\Http\Controllers\Admin\ProductoController;
 use App\Http\Controllers\Admin\ReparacionController;
 use Illuminate\Support\Facades\Route;
 
@@ -67,7 +69,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     // ── Edición de reparación ──
     // GET  → muestra el formulario con los datos actuales pre-llenados
     // PUT  → recibe el formulario y persiste los cambios
-    
+
 
     Route::put('/reparaciones/{reparacion}', [ReparacionController::class, 'update'])
         ->name('reparaciones.update');
@@ -75,6 +77,20 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     // ── Cajas ──
     Route::post('/cajas', [CajaController::class, 'store'])
         ->name('cajas.store');
+
+    // ── Categorías ──
+    Route::get('/categorias',               [CategoriaController::class, 'index'])  ->name('categorias.index');
+    Route::post('/categorias',              [CategoriaController::class, 'store'])  ->name('categorias.store');
+    Route::patch('/categorias/{categoria}', [CategoriaController::class, 'update']) ->name('categorias.update');
+    Route::delete('/categorias/{categoria}',[CategoriaController::class, 'destroy'])->name('categorias.destroy');
+
+    // ── Productos ──
+    Route::get('/productos',                        [ProductoController::class, 'index'])         ->name('productos.index');
+    Route::post('/productos',                       [ProductoController::class, 'store'])         ->name('productos.store');
+    Route::patch('/productos/{producto}',            [ProductoController::class, 'update'])        ->name('productos.update');
+    Route::patch('/productos/{producto}/stock',     [ProductoController::class, 'ajustarStock'])  ->name('productos.ajustarStock');
+    Route::delete('/productos/{producto}',          [ProductoController::class, 'destroy'])       ->name('productos.destroy');
+    Route::delete('/producto-imagenes/{imagen}',    [ProductoController::class, 'eliminarImagen'])->name('productos.eliminarImagen');
 
     // ── Perfil de usuario ──
     Route::get('/perfil',                    [PerfilController::class, 'index'])            ->name('perfil');
