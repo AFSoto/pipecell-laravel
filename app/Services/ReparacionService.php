@@ -109,6 +109,14 @@ class ReparacionService
                 }
             }
 
+            // Regla de negocio: no se puede entregar si hay saldo pendiente.
+            if ($nuevoEstado === 'entregado' && ! $reparacion->estaPagada()) {
+                $pendiente = number_format($reparacion->saldo_pendiente, 0, ',', '.');
+                throw new \RuntimeException(
+                    "No se puede marcar como entregado: hay un saldo pendiente de \${$pendiente}."
+                );
+            }
+
             $reparacion->update([
                 'estado' => $nuevoEstado,
                 'fecha_entrega' => $nuevoEstado === 'entregado' ? now() : $reparacion->fecha_entrega,
@@ -130,13 +138,37 @@ class ReparacionService
 
     /**
      * Registra un nuevo abono.
+     *
+     * La transacción + lockForUpdate garantiza que dos peticiones concurrentes
+     * no puedan ambas pasar la validación de saldo y registrar abonos que en
+     * total superen el valor de la reparación.
      */
     public function registrarAbono(Reparacion $reparacion, float $monto, ?string $nota = null): Abono
     {
-        return Abono::create([
-            'reparacion_id' => $reparacion->id,
-            'monto'         => $monto,
-            'nota'          => $nota,
-        ]);
+        return DB::transaction(function () use ($reparacion, $monto, $nota) {
+
+            // Releer con bloqueo exclusivo para cerrar la ventana de race condition
+            // entre la validación del controlador y la escritura en BD.
+            $reparacion = Reparacion::lockForUpdate()->findOrFail($reparacion->id);
+
+            $saldo = $reparacion->saldo_pendiente;
+
+            if ($saldo <= 0) {
+                throw new \RuntimeException('Esta reparación ya está pagada completamente.');
+            }
+
+            if ($monto > $saldo) {
+                $pendiente = number_format($saldo, 0, ',', '.');
+                throw new \RuntimeException(
+                    "El monto supera el saldo pendiente de \${$pendiente}."
+                );
+            }
+
+            return Abono::create([
+                'reparacion_id' => $reparacion->id,
+                'monto'         => $monto,
+                'nota'          => $nota,
+            ]);
+        });
     }
 }

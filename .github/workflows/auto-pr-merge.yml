@@ -1,0 +1,48 @@
+name: Auto PR and Merge to Develop
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+      - 'hotfix/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Pull Request and merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+
+          # verificar si ya existe un pr abierto para esta rama
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --base develop --state open --json number --jq '.[0].number')
+
+          if [ -z "$EXISTING_PR" ]; then
+            # crear el pr
+            PR_NUMBER=$(gh pr create \
+              --base develop \
+              --head "$BRANCH" \
+              --title "Auto PR: $BRANCH -> develop" \
+              --body "PR creada automaticamente por GitHub Actions desde la rama \`$BRANCH\`." \
+              | grep -oP '(?<=pull/)\d+')
+            echo "PR creado: #$PR_NUMBER"
+          else
+            PR_NUMBER=$EXISTING_PR
+            echo "PR ya existe: #$PR_NUMBER"
+          fi
+
+          # merge directo
+          gh pr merge "$PR_NUMBER" --merge 

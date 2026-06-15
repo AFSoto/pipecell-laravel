@@ -1,10 +1,14 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\CategoriaController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CajaController;
 use App\Http\Controllers\Admin\PerfilController;
+use App\Http\Controllers\Admin\ProductoController;
 use App\Http\Controllers\Admin\ReparacionController;
+use App\Http\Controllers\Admin\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -26,7 +30,13 @@ Route::view('/', 'landing')->name('landing');
 // El middleware 'guest' impide que un usuario ya logueado vea el login
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
-    Route::post('/login', [LoginController::class, 'login']);
+    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:login');
+
+    // ── Recuperación de contraseña ──
+    Route::get('/olvide-contrasena', [PasswordResetController::class, 'showForgotForm'])->name('password.request');
+    Route::post('/olvide-contrasena', [PasswordResetController::class, 'sendResetLink'])->name('password.email')->middleware('throttle:6,1');
+    Route::get('/restablecer-contrasena/{token}', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
+    Route::post('/restablecer-contrasena', [PasswordResetController::class, 'resetPassword'])->name('password.update');
 });
 
 // ── 3. Ruta de logout (solo para usuarios logueados) ──
@@ -60,7 +70,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     // ── Edición de reparación ──
     // GET  → muestra el formulario con los datos actuales pre-llenados
     // PUT  → recibe el formulario y persiste los cambios
-    
+
 
     Route::put('/reparaciones/{reparacion}', [ReparacionController::class, 'update'])
         ->name('reparaciones.update');
@@ -69,9 +79,29 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::post('/cajas', [CajaController::class, 'store'])
         ->name('cajas.store');
 
+    // ── Categorías ──
+    Route::get('/categorias',               [CategoriaController::class, 'index'])  ->name('categorias.index');
+    Route::post('/categorias',              [CategoriaController::class, 'store'])  ->name('categorias.store');
+    Route::patch('/categorias/{categoria}', [CategoriaController::class, 'update']) ->name('categorias.update');
+    Route::delete('/categorias/{categoria}',[CategoriaController::class, 'destroy'])->name('categorias.destroy');
+
+    // ── Productos ──
+    Route::get('/productos',                        [ProductoController::class, 'index'])         ->name('productos.index');
+    Route::post('/productos',                       [ProductoController::class, 'store'])         ->name('productos.store');
+    Route::patch('/productos/{producto}',            [ProductoController::class, 'update'])        ->name('productos.update');
+    Route::patch('/productos/{producto}/stock',     [ProductoController::class, 'ajustarStock'])  ->name('productos.ajustarStock');
+    Route::delete('/productos/{producto}',          [ProductoController::class, 'destroy'])       ->name('productos.destroy');
+    Route::delete('/producto-imagenes/{imagen}',    [ProductoController::class, 'eliminarImagen'])->name('productos.eliminarImagen');
+
     // ── Perfil de usuario ──
     Route::get('/perfil',                    [PerfilController::class, 'index'])            ->name('perfil');
     Route::put('/perfil/info',               [PerfilController::class, 'actualizarInfo'])   ->name('perfil.info');
     Route::put('/perfil/password',           [PerfilController::class, 'cambiarPassword'])  ->name('perfil.password');
     Route::delete('/perfil/otras-sesiones',  [PerfilController::class, 'cerrarOtrasSesiones'])->name('perfil.otras-sesiones');
+
+    // ── Configuración ──
+    Route::get('/settings',                                       [SettingsController::class, 'index'])              ->name('settings.index');
+    Route::post('/settings/tipo-producto',                        [SettingsController::class, 'storeTipoProducto'])   ->name('settings.tipo-producto.store');
+    Route::patch('/settings/tipo-producto/{tipoProducto}',        [SettingsController::class, 'updateTipoProducto'])  ->name('settings.tipo-producto.update');
+    Route::delete('/settings/tipo-producto/{tipoProducto}',       [SettingsController::class, 'destroyTipoProducto']) ->name('settings.tipo-producto.destroy');
 });

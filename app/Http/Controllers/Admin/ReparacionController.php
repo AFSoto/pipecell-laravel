@@ -23,68 +23,152 @@ class ReparacionController extends Controller
     ) {}
 
     /**
-     * Lista las reparaciones con filtros de estado, periodo y búsqueda.
+     * Lista las reparaciones aplicando filtros
+     * de estado, fechas y búsqueda general.
      */
     public function index(Request $request)
     {
+        // Obtiene el estado desde la URL.
+        // Por defecto se usa "en_proceso".
         $estado  = $request->input('estado', 'en_proceso');
+
+        // Obtiene el periodo de tiempo seleccionado.
+        // Por defecto se usa "mes".
         $periodo = $request->input('periodo', 'mes');
+
+        // Texto ingresado en el buscador
         $buscar  = $request->input('buscar');
+
+        // Fecha inicial personalizada
         $desde   = $request->input('desde');
+
+        // Fecha final personalizada
         $hasta   = $request->input('hasta');
 
-        // en_proceso y arreglado siempre tienen pocos registros — sin filtro de fecha
-        $sinFiltroFecha = in_array($estado, ['en_proceso', 'arreglado']);
+        // Solo en_proceso no requiere filtro de fechas
+        // (se quiere ver todo lo que está pendiente sin importar cuándo entró)
+        $sinFiltroFecha = $estado === 'en_proceso';
 
 
+        // Construcción inicial de la consulta
         $query = Reparacion::with(['caja', 'abonos'])
+
+            // Filtra por estado si no es "todos"
             ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
+
+            // Aplica búsqueda únicamente si tiene
+            // al menos 2 caracteres
             ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
+
+                // Agrupa las búsquedas OR
                 $q->where(function ($sub) use ($buscar) {
+
+                    // Busca coincidencias por nombre
                     $sub->where('nombre_cliente', 'like', "%{$buscar}%")
+
+                        // Busca coincidencias por teléfono
                         ->orWhere('telefono_cliente', 'like', "%{$buscar}%")
+
+                        // Busca coincidencias por marca
                         ->orWhere('marca', 'like', "%{$buscar}%")
+
+                        // Busca coincidencias por modelo
                         ->orWhere('modelo', 'like', "%{$buscar}%");
                 });
             })
+
+            // Ordena por fecha más reciente
             ->latest();
 
+        // Solo aplica filtros de fecha
+        // cuando el estado lo requiere
         if (! $sinFiltroFecha) {
+
+            // Filtrar reparaciones del día actual
             if ($periodo === 'hoy') {
+
                 $query->whereDate('created_at', today());
+
+                // Filtrar reparaciones de la semana actual
             } elseif ($periodo === 'semana') {
-                $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]);
-            }  elseif ($periodo === 'mes_pasado') {
-    $mesAnterior = now()->subMonthNoOverflow();
-    $query->whereMonth('created_at', $mesAnterior->month)
-          ->whereYear('created_at', $mesAnterior->year);
+
+                $query->whereBetween('created_at', [
+                    now()->startOfWeek(),
+                    now()->endOfWeek()
+                ]);
+
+                // Filtrar reparaciones del mes pasado
+            } elseif ($periodo === 'mes_pasado') {
+
+                $mesAnterior = now()->subMonthNoOverflow();
+
+                $query->whereMonth('created_at', $mesAnterior->month)
+                    ->whereYear('created_at', $mesAnterior->year);
+
+                // Filtrar últimos 3 meses
             } elseif ($periodo === 'trimestre') {
-                $query->whereBetween('created_at', [now()->subMonths(3)->startOfDay(), now()->endOfDay()]);
+
+                $query->whereBetween('created_at', [
+                    now()->subMonths(3)->startOfDay(),
+                    now()->endOfDay()
+                ]);
+
+                // Filtrar año actual
             } elseif ($periodo === 'anio') {
+
                 $query->whereYear('created_at', now()->year);
+
+                // Filtrar rango personalizado
             } elseif ($periodo === 'personalizado' && $desde && $hasta) {
-                $query->whereBetween('created_at', [$desde, $hasta . ' 23:59:59']);
+
+                $query->whereBetween('created_at', [
+                    $desde,
+                    $hasta . ' 23:59:59'
+                ]);
+
+                // Filtro por defecto: mes actual
             } else {
+
                 $query->whereMonth('created_at', now()->month)
                     ->whereYear('created_at', now()->year);
             }
         }
 
 
-        $reparaciones = strlen($buscar ?? '') >= 2 ? $query->get() : $query->paginate(10);
+        // Si existe búsqueda activa,
+        // obtiene todos los resultados.
+        // Si no, usa paginación.
+        $reparaciones = strlen($buscar ?? '') >= 2
+            ? $query->get()
+            : $query->paginate(10);
 
+        // Contadores para mostrar estadísticas
         $contadores = [
+
+            // Cantidad en proceso
             'en_proceso' => Reparacion::where('estado', 'en_proceso')->count(),
+
+            // Cantidad arreglada
             'arreglado'  => Reparacion::where('estado', 'arreglado')->count(),
+
+            // Cantidad entregada
             'entregado'  => Reparacion::where('estado', 'entregado')->count(),
         ];
 
+        // Obtiene cajas disponibles ordenadas
+        // por grupo y número
         $cajasLibres = Caja::libres()
             ->orderBy('grupo')
             ->orderBy('numero')
             ->get();
 
-        return view('admin.reparaciones.index', compact('reparaciones', 'cajasLibres', 'contadores'));
+        // Retorna la vista principal
+        // junto con toda la información necesaria
+        return view('admin.reparaciones.index', compact(
+            'reparaciones',
+            'cajasLibres',
+            'contadores'
+        ));
     }
 
 
@@ -173,7 +257,7 @@ class ReparacionController extends Controller
     public function registrarAbono(Request $request, Reparacion $reparacion)
     {
         $request->validate([
-            'monto' => ['required', 'numeric', 'min:1'],
+            'monto' => ['required', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/'],
             'nota'  => ['nullable', 'string', 'max:255'],
         ]);
 

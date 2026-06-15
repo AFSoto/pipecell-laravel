@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use App\Enums\RolUsuario;
+use App\Mail\ResetPasswordMail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Auth\Passwords\CanResetPassword;
+use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Modelo de usuario del sistema.
@@ -14,9 +18,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * se usa para el login. Laravel necesita esto para manejar
  * la autenticación (sesiones, password hash, etc).
  */
-class User extends Authenticatable
+class User extends Authenticatable implements CanResetPasswordContract
 {
-    use HasFactory;
+    use HasFactory, CanResetPassword;
 
     /**
      * Campos que se pueden llenar masivamente.
@@ -58,6 +62,11 @@ class User extends Authenticatable
         ];
     }
 
+    public function sendPasswordResetNotification($token): void
+    {
+        Mail::to($this->email)->send(new ResetPasswordMail($token, $this->email));
+    }
+
     // ── Relaciones ──
 
     /**
@@ -67,6 +76,15 @@ class User extends Authenticatable
     public function reparaciones(): HasMany
     {
         return $this->hasMany(Reparacion::class, 'tecnico_id');
+    }
+
+    /**
+     * Ventas registradas por este usuario.
+     * Ejemplo: $usuario->ventas → colección de Venta
+     */
+    public function ventas(): HasMany
+    {
+        return $this->hasMany(Venta::class);
     }
 
     // ── Helpers (métodos de ayuda) ──
