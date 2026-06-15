@@ -114,7 +114,7 @@ class ProductoController extends Controller
     {
         $data = $request->validate([
             'operacion'          => ['required', 'in:entrada,salida'],
-            'cantidad'           => ['required', 'integer', 'min:0'],
+            'cantidad'           => ['required', 'integer', 'min:1'],
             'tipo_movimiento_id' => ['nullable', 'exists:tipos_movimiento_stock,id'],
             'nuevo_tipo'         => ['nullable', 'string', 'max:100'],
             'nota'               => ['nullable', 'string', 'max:500'],

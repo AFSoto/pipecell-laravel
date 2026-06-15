@@ -201,22 +201,26 @@ class ProductoService
     {
         $eraPrincipal = $imagen->es_principal;
         $productoId   = $imagen->producto_id;
+        $path         = $imagen->path;
 
-        // Borrar archivo físico del disco 'public' (storage/app/public)
-        // delete() no lanza excepción si el archivo no existe, solo retorna false
-        Storage::disk('public')->delete($imagen->path);
+        // Las operaciones de BD van dentro de la transacción.
+        // El archivo físico se borra DESPUÉS, una vez confirmada la transacción,
+        // para evitar que quede huérfano si la BD falla.
+        DB::transaction(function () use ($imagen, $eraPrincipal, $productoId) {
 
-        // Borrar el registro de la BD
-        $imagen->delete();
+            $imagen->delete();
 
-        // Si la imagen eliminada era la principal, asignar la siguiente disponible
-        if ($eraPrincipal) {
-            $otraImagen = ProductoImagen::where('producto_id', $productoId)->first();
+            if ($eraPrincipal) {
+                $otraImagen = ProductoImagen::where('producto_id', $productoId)->first();
 
-            if ($otraImagen) {
-                $otraImagen->update(['es_principal' => true]);
+                if ($otraImagen) {
+                    $otraImagen->update(['es_principal' => true]);
+                }
             }
-        }
+        });
+
+        // delete() no lanza excepción si el archivo no existe, solo retorna false
+        Storage::disk('public')->delete($path);
     }
 
     /**

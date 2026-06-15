@@ -57,7 +57,17 @@ class StoreReparacionRequest extends FormRequest
             'costo_repuestos'   => ['nullable', 'numeric', 'min:0'],
 
             // ── Abono inicial ──
-            'abono_inicial'     => ['nullable', 'numeric', 'min:0'],
+            'abono_inicial' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    $valorTotal = $this->input('valor_total');
+                    if ($value && $valorTotal && $value > $valorTotal) {
+                        $fail('El abono inicial no puede superar el valor total de la reparación.');
+                    }
+                },
+            ],
         ];
     }
 
