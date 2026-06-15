@@ -27,6 +27,8 @@ class Producto extends Model
         'nombre',
         'descripcion',
         'marco',
+        'marca',
+        'referencia',
         'precio_compra',
         'precio_venta',
         'stock',

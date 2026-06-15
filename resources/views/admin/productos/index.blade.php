@@ -223,6 +223,8 @@
                                     {{ $producto->stock }},
                                     {{ $producto->stock_minimo }},
                                     {{ is_null($producto->marco) ? 'null' : ($producto->marco ? '1' : '0') }},
+                                    '{{ addslashes($producto->marca ?? '') }}',
+                                    '{{ addslashes($producto->referencia ?? '') }}',
                                     {{ $producto->imagenes->map(fn($i) => ['id' => $i->id, 'path' => $i->path, 'es_principal' => $i->es_principal])->toJson() }}
                                 )"
                                 class="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
@@ -366,6 +368,24 @@
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">No, sin marco</span>
                     </label>
+                </div>
+            </div>
+
+            {{-- Marca y Referencia (solo visible para categoría Pantallas) --}}
+            <div id="crear-seccion-pantalla" class="hidden grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
+                    <input type="text" name="marca" maxlength="100"
+                           placeholder="Ej: Xiaomi, Motorola"
+                           value="{{ old('marca') }}"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
+                    <input type="text" name="referencia" maxlength="100"
+                           placeholder="Ej: G20, 15C"
+                           value="{{ old('referencia') }}"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
             </div>
 
@@ -538,6 +558,22 @@
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">No, sin marco</span>
                     </label>
+                </div>
+            </div>
+
+            {{-- Marca y Referencia (solo visible para categoría Pantallas) --}}
+            <div id="editar-seccion-pantalla" class="hidden grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
+                    <input type="text" name="marca" id="editar-marca" maxlength="100"
+                           placeholder="Ej: Xiaomi, Motorola"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
+                    <input type="text" name="referencia" id="editar-referencia" maxlength="100"
+                           placeholder="Ej: G20, 15C"
+                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
             </div>
 
@@ -764,13 +800,22 @@
      * @param {string}        prefijo      'crear' o 'editar'
      */
     function toggleMarco(categoriaId, prefijo) {
-        const seccion = document.getElementById(`${prefijo}-seccion-marco`);
-        if (categoriasConMarco.includes(parseInt(categoriaId))) {
-            seccion.classList.remove('hidden');
+        const esPantalla = categoriasConMarco.includes(parseInt(categoriaId));
+
+        const seccionMarco = document.getElementById(`${prefijo}-seccion-marco`);
+        if (esPantalla) {
+            seccionMarco.classList.remove('hidden');
         } else {
-            seccion.classList.add('hidden');
-            // Limpiar selección cuando se oculta para no enviar valor incorrecto
-            seccion.querySelectorAll('input[type=radio]').forEach(r => r.checked = false);
+            seccionMarco.classList.add('hidden');
+            seccionMarco.querySelectorAll('input[type=radio]').forEach(r => r.checked = false);
+        }
+
+        const seccionPantalla = document.getElementById(`${prefijo}-seccion-pantalla`);
+        if (esPantalla) {
+            seccionPantalla.classList.remove('hidden');
+        } else {
+            seccionPantalla.classList.add('hidden');
+            seccionPantalla.querySelectorAll('input[type=text]').forEach(i => i.value = '');
         }
     }
 
@@ -880,7 +925,7 @@
      * @param {Array}  imagenes     Array de objetos {id, path, es_principal}
      */
     function abrirEditarProducto(id, categoriaId, tipoProductoId, codigo, nombre, descripcion,
-                                  precioCompra, precioVenta, stock, stockMinimo, marco, imagenes) {
+                                  precioCompra, precioVenta, stock, stockMinimo, marco, marca, referencia, imagenes) {
         const baseUrl = '{{ url("admin/productos") }}';
         document.getElementById('form-editar-producto').action = `${baseUrl}/${id}`;
 
@@ -895,12 +940,14 @@
         document.getElementById('editar-categoria_id').value      = categoriaId;
         document.getElementById('editar-tipo_producto_id').value  = tipoProductoId ?? '';
 
-        // Mostrar/ocultar marco y pre-seleccionar valor
+        // Mostrar/ocultar marco + marca/referencia según categoría
         toggleMarco(categoriaId, 'editar');
         if (marco !== null) {
             const radioId = marco == 1 ? 'editar-marco-si' : 'editar-marco-no';
             document.getElementById(radioId).checked = true;
         }
+        document.getElementById('editar-marca').value      = marca ?? '';
+        document.getElementById('editar-referencia').value = referencia ?? '';
 
         // Campos de precio: el visual muestra con puntos, el hidden guarda número puro
         document.getElementById('editar-precio_compra').value        = precioCompra;
