@@ -29,7 +29,7 @@ class UpdateProductoRequest extends FormRequest
             'categoria_id'      => ['required', 'exists:categorias,id'],
             'tipo_producto_id'  => ['nullable', 'exists:tipo_productos,id'],
             'codigo'            => ['nullable', 'string', 'max:50', "unique:productos,codigo,{$productoId}"],
-            'nombre'            => ['required', 'string', 'max:150'],
+            'nombre'            => ['required', 'string', 'max:150', $this->reglaNombreUnico($productoId)],
             'descripcion'       => ['nullable', 'string'],
             'marco'             => ['nullable', 'boolean', $this->reglaMarco()],
             'marca'             => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('La marca es obligatoria para pantallas.')],
@@ -60,6 +60,21 @@ class UpdateProductoRequest extends FormRequest
             'imagenes.*.image'          => 'Cada archivo debe ser una imagen válida.',
             'imagenes.*.max'            => 'Cada imagen no puede superar los 2 MB.',
         ];
+    }
+
+    private function reglaNombreUnico(int $productoId): \Closure
+    {
+        return function ($attribute, $value, $fail) use ($productoId) {
+            $existe = \App\Models\Producto::where('categoria_id', $this->categoria_id)
+                ->where('nombre', $value)
+                ->where('estado', 'activo')
+                ->where('id', '!=', $productoId)
+                ->exists();
+
+            if ($existe) {
+                $fail('Ya existe un producto con ese nombre en esta categoría.');
+            }
+        };
     }
 
     private function reglaMarco(): \Closure
