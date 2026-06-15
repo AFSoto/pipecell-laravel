@@ -60,6 +60,8 @@
 @endphp
 
 <form method="GET" action="{{ route('admin.productos.index') }}" id="form-filtros" class="mb-6">
+    {{-- Botón submit oculto sin nombre — captura el Enter del campo buscar sin agregar stock_bajo=1 --}}
+    <button type="submit" class="hidden"></button>
     <div class="flex flex-wrap items-center gap-3">
 
         {{-- Select de categoría — auto-submit al cambiar --}}

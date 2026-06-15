@@ -94,16 +94,15 @@ class ProductoService
                 'stock_minimo'     => $datos['stock_minimo'] ?? 3,
             ]);
 
-            // Si vienen imágenes nuevas, agregarlas
+            // Si vienen imágenes nuevas, agregarlas y convertir la primera en principal
             if (! empty($imagenes)) {
-                // Verificamos si el producto ya tiene imagen principal.
-                // Si no tiene, la primera imagen nueva se marcará como principal.
-                $tienePrincipal = $producto->imagenes()->where('es_principal', true)->exists();
+                // Quitar la marca de principal a la imagen actual para que la nueva tome su lugar
+                $producto->imagenes()->where('es_principal', true)->update(['es_principal' => false]);
 
                 $this->guardarImagenes(
                     $producto,
                     $imagenes,
-                    marcarPrimeraComoPrincipal: ! $tienePrincipal
+                    marcarPrimeraComoPrincipal: true
                 );
             }
 
