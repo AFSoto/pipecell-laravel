@@ -105,6 +105,31 @@ class ProductoController extends Controller
     }
 
     /**
+     * Ajusta el stock de un producto vía AJAX.
+     * Soporta tres operaciones: entrada (+), salida (-) y ajuste directo (=).
+     */
+    public function ajustarStock(Request $request, Producto $producto)
+    {
+        $data = $request->validate([
+            'operacion' => ['required', 'in:entrada,salida,directo'],
+            'cantidad'  => ['required', 'integer', 'min:0'],
+        ]);
+
+        match ($data['operacion']) {
+            'entrada' => $producto->increment('stock', $data['cantidad']),
+            'salida'  => $producto->decrement('stock', min($data['cantidad'], $producto->stock)),
+            'directo' => $producto->update(['stock' => $data['cantidad']]),
+        };
+
+        $producto->refresh();
+
+        return response()->json([
+            'success'     => true,
+            'stock_nuevo' => $producto->stock,
+        ]);
+    }
+
+    /**
      * Desactiva un producto (soft delete por estado).
      */
     public function destroy(Producto $producto)

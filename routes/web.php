@@ -87,7 +87,8 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     // ── Productos ──
     Route::get('/productos',                        [ProductoController::class, 'index'])         ->name('productos.index');
     Route::post('/productos',                       [ProductoController::class, 'store'])         ->name('productos.store');
-    Route::patch('/productos/{producto}',           [ProductoController::class, 'update'])        ->name('productos.update');
+    Route::patch('/productos/{producto}',            [ProductoController::class, 'update'])        ->name('productos.update');
+    Route::patch('/productos/{producto}/stock',     [ProductoController::class, 'ajustarStock'])  ->name('productos.ajustarStock');
     Route::delete('/productos/{producto}',          [ProductoController::class, 'destroy'])       ->name('productos.destroy');
     Route::delete('/producto-imagenes/{imagen}',    [ProductoController::class, 'eliminarImagen'])->name('productos.eliminarImagen');
 
