@@ -257,7 +257,7 @@ class ReparacionController extends Controller
     public function registrarAbono(Request $request, Reparacion $reparacion)
     {
         $request->validate([
-            'monto' => ['required', 'numeric', 'min:1'],
+            'monto' => ['required', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/'],
             'nota'  => ['nullable', 'string', 'max:255'],
         ]);
 

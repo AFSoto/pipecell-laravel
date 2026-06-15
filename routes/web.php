@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\CajaController;
 use App\Http\Controllers\Admin\PerfilController;
 use App\Http\Controllers\Admin\ProductoController;
 use App\Http\Controllers\Admin\ReparacionController;
+use App\Http\Controllers\Admin\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -97,4 +98,10 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::put('/perfil/info',               [PerfilController::class, 'actualizarInfo'])   ->name('perfil.info');
     Route::put('/perfil/password',           [PerfilController::class, 'cambiarPassword'])  ->name('perfil.password');
     Route::delete('/perfil/otras-sesiones',  [PerfilController::class, 'cerrarOtrasSesiones'])->name('perfil.otras-sesiones');
+
+    // ── Configuración ──
+    Route::get('/settings',                                       [SettingsController::class, 'index'])              ->name('settings.index');
+    Route::post('/settings/tipo-producto',                        [SettingsController::class, 'storeTipoProducto'])   ->name('settings.tipo-producto.store');
+    Route::patch('/settings/tipo-producto/{tipoProducto}',        [SettingsController::class, 'updateTipoProducto'])  ->name('settings.tipo-producto.update');
+    Route::delete('/settings/tipo-producto/{tipoProducto}',       [SettingsController::class, 'destroyTipoProducto']) ->name('settings.tipo-producto.destroy');
 });

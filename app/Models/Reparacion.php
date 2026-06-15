@@ -84,7 +84,13 @@ class Reparacion extends Model
      */
     protected function totalAbonado(): Attribute
     {
-        return Attribute::get(fn () => $this->abonos()->sum('monto'));
+        return Attribute::get(function () {
+            // Si la relación ya fue eager-loaded, usa la colección en memoria (sin query extra).
+            // Si no, cae al sum() de la BD para no forzar la carga de todos los abonos.
+            return $this->relationLoaded('abonos')
+                ? $this->abonos->sum('monto')
+                : $this->abonos()->sum('monto');
+        });
     }
 
     /**

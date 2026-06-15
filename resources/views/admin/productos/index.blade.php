@@ -60,6 +60,8 @@
 @endphp
 
 <form method="GET" action="{{ route('admin.productos.index') }}" id="form-filtros" class="mb-6">
+    {{-- Botón submit oculto sin nombre — captura el Enter del campo buscar sin agregar stock_bajo=1 --}}
+    <button type="submit" class="hidden"></button>
     <div class="flex flex-wrap items-center gap-3">
 
         {{-- Select de categoría — auto-submit al cambiar --}}
@@ -185,6 +187,26 @@
 
                     @if ($producto->codigo)
                         <p class="text-xs text-gray-400 font-mono mt-0.5">{{ $producto->codigo }}</p>
+                    @endif
+
+                    {{-- Etiquetas de tipo y marco --}}
+                    @if ($producto->tipoProducto || $producto->marco !== null)
+                        <div class="flex flex-wrap gap-1 mt-1.5">
+                            @if ($producto->tipoProducto)
+                                <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                                    {{ $producto->tipoProducto->nombre }}
+                                </span>
+                            @endif
+                            @if ($producto->marco === true)
+                                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 bg-violet-600 text-white rounded-full">
+                                    Con marco
+                                </span>
+                            @elseif ($producto->marco === false)
+                                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 bg-slate-400 text-white rounded-full">
+                                    Sin marco
+                                </span>
+                            @endif
+                        </div>
                     @endif
 
                     {{-- Precio de venta --}}
@@ -322,6 +344,28 @@
               enctype="multipart/form-data"
               class="p-6 space-y-5">
             @csrf
+
+            {{-- Errores de validación --}}
+            @if ($errors->any())
+                <div id="crear-errores" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 transition-opacity duration-500">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <p class="text-sm font-semibold text-red-700 mb-1">Corrige los siguientes errores:</p>
+                            <ul class="list-disc list-inside space-y-0.5 text-sm text-red-600">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                        <button type="button" onclick="ocultarErroresCrear()"
+                                class="flex-shrink-0 p-1 rounded-lg hover:bg-red-100 transition text-red-400 hover:text-red-600">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            @endif
 
             {{-- Categoría y Tipo --}}
             <div class="grid grid-cols-2 gap-4">
@@ -474,17 +518,6 @@
                 {{-- Preview de imágenes seleccionadas --}}
                 <div id="preview-imagenes-crear" class="mt-3 flex flex-wrap gap-2"></div>
             </div>
-
-            {{-- Errores de validación --}}
-            @if ($errors->any())
-                <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
-                    <ul class="list-disc list-inside space-y-1">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
 
             <div class="flex items-center justify-end gap-3 pt-2">
                 <button type="button"
@@ -860,8 +893,6 @@
         const marcoNo = document.getElementById(`${prefijo}-marco-no`);
 
         const partes = ['Pantalla'];
-        if (marcoSi?.checked)      partes.push('Con Marco');
-        else if (marcoNo?.checked) partes.push('Sin Marco');
 
         const marca = document.getElementById(`${prefijo}-marca`)?.value.trim();
         if (marca) partes.push(marca);
@@ -1135,7 +1166,7 @@
         setTimeout(() => {
             noti.classList.add('translate-x-full');
             setTimeout(() => noti.remove(), 300);
-        }, 3000);
+        }, 5000);
     }
 
     // ══════════════════════════════════════
@@ -1371,10 +1402,22 @@
         }
     });
 
-    // Si hay errores de validación, re-abrir el modal de creación automáticamente
+    function ocultarErroresCrear() {
+        const el = document.getElementById('crear-errores');
+        if (!el) return;
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 500);
+    }
+
+    // Si hay errores de validación, re-abrir el modal y hacer scroll al bloque de errores
     @if ($errors->any())
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('modal-producto').classList.remove('hidden');
+            const modal = document.getElementById('modal-producto');
+            modal.classList.remove('hidden');
+            const contenedor = modal.querySelector('.overflow-y-auto');
+            if (contenedor) contenedor.scrollTop = 0;
+            // Auto-ocultar errores después de 3 segundos
+            setTimeout(() => ocultarErroresCrear(), 3000);
         });
     @endif
 </script>
