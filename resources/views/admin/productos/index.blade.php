@@ -357,14 +357,16 @@
                 <label class="text-xs font-medium text-amber-800 mb-2 block">¿La pantalla viene con marco? *</label>
                 <div class="flex items-center gap-6">
                     <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="marco" value="1"
+                        <input type="radio" name="marco" id="crear-marco-si" value="1"
                                {{ old('marco') === '1' ? 'checked' : '' }}
+                               onchange="generarNombrePantalla('crear')"
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">Sí, viene con marco</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="marco" value="0"
+                        <input type="radio" name="marco" id="crear-marco-no" value="0"
                                {{ old('marco') === '0' ? 'checked' : '' }}
+                               onchange="generarNombrePantalla('crear')"
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">No, sin marco</span>
                     </label>
@@ -375,18 +377,26 @@
             <div id="crear-seccion-pantalla" class="hidden grid grid-cols-2 gap-4">
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
-                    <input type="text" name="marca" maxlength="100"
+                    <input type="text" name="marca" id="crear-marca" maxlength="100"
                            placeholder="Ej: Xiaomi, Motorola"
                            value="{{ old('marca') }}"
+                           oninput="generarNombrePantalla('crear')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
-                    <input type="text" name="referencia" maxlength="100"
+                    <input type="text" name="referencia" id="crear-referencia" maxlength="100"
                            placeholder="Ej: G20, 15C"
                            value="{{ old('referencia') }}"
+                           oninput="generarNombrePantalla('crear')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
+            </div>
+
+            {{-- Preview nombre auto-generado (solo pantallas) --}}
+            <div id="crear-preview-nombre" class="hidden bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <p class="text-xs text-blue-600 mb-0.5">Nombre generado automáticamente</p>
+                <p id="crear-nombre-preview-text" class="text-sm font-semibold text-blue-900">—</p>
             </div>
 
             {{-- Código y Nombre --}}
@@ -398,9 +408,9 @@
                            value="{{ old('codigo') }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
-                <div>
+                <div id="crear-wrapper-nombre">
                     <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
-                    <input type="text" name="nombre" required maxlength="150"
+                    <input type="text" name="nombre" id="crear-nombre" required maxlength="150"
                            placeholder="Ej: Pantalla Samsung Galaxy S24"
                            value="{{ old('nombre') }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
@@ -552,11 +562,13 @@
                 <div class="flex items-center gap-6">
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="marco" id="editar-marco-si" value="1"
+                               onchange="generarNombrePantalla('editar')"
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">Sí, viene con marco</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="marco" id="editar-marco-no" value="0"
+                               onchange="generarNombrePantalla('editar')"
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">No, sin marco</span>
                     </label>
@@ -569,14 +581,22 @@
                     <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
                     <input type="text" name="marca" id="editar-marca" maxlength="100"
                            placeholder="Ej: Xiaomi, Motorola"
+                           oninput="generarNombrePantalla('editar')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
                     <input type="text" name="referencia" id="editar-referencia" maxlength="100"
                            placeholder="Ej: G20, 15C"
+                           oninput="generarNombrePantalla('editar')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
+            </div>
+
+            {{-- Preview nombre auto-generado (solo pantallas) --}}
+            <div id="editar-preview-nombre" class="hidden bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <p class="text-xs text-blue-600 mb-0.5">Nombre generado automáticamente</p>
+                <p id="editar-nombre-preview-text" class="text-sm font-semibold text-blue-900">—</p>
             </div>
 
             {{-- Código y Nombre --}}
@@ -586,7 +606,7 @@
                     <input type="text" name="codigo" id="editar-codigo" maxlength="50"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
-                <div>
+                <div id="editar-wrapper-nombre">
                     <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
                     <input type="text" name="nombre" id="editar-nombre" required maxlength="150"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
@@ -819,6 +839,42 @@
             seccionPantalla.classList.add('hidden');
             seccionPantalla.querySelectorAll('input[type=text]').forEach(i => i.value = '');
         }
+
+        // Nombre: ocultar campo manual y mostrar preview cuando es pantalla
+        const wrapperNombre  = document.getElementById(`${prefijo}-wrapper-nombre`);
+        const previewNombre  = document.getElementById(`${prefijo}-preview-nombre`);
+        if (esPantalla) {
+            wrapperNombre.classList.add('hidden');
+            previewNombre.classList.remove('hidden');
+            generarNombrePantalla(prefijo);
+        } else {
+            wrapperNombre.classList.remove('hidden');
+            previewNombre.classList.add('hidden');
+            // Limpiar el valor auto-generado para no confundir al servidor
+            document.getElementById(`${prefijo}-nombre`).value = '';
+        }
+    }
+
+    function generarNombrePantalla(prefijo) {
+        const marcoSi = document.getElementById(`${prefijo}-marco-si`);
+        const marcoNo = document.getElementById(`${prefijo}-marco-no`);
+
+        const partes = ['Pantalla'];
+        if (marcoSi?.checked)      partes.push('Con Marco');
+        else if (marcoNo?.checked) partes.push('Sin Marco');
+
+        const marca = document.getElementById(`${prefijo}-marca`)?.value.trim();
+        if (marca) partes.push(marca);
+
+        const ref = document.getElementById(`${prefijo}-referencia`)?.value.trim();
+        if (ref) partes.push(ref);
+
+        const nombre = partes.join(' ');
+
+        // Actualizar el input oculto (se envía con el formulario)
+        document.getElementById(`${prefijo}-nombre`).value = nombre;
+        // Actualizar el preview visual
+        document.getElementById(`${prefijo}-nombre-preview-text`).textContent = nombre;
     }
 
     // ══════════════════════════════════════
@@ -950,6 +1006,8 @@
         }
         document.getElementById('editar-marca').value      = marca ?? '';
         document.getElementById('editar-referencia').value = referencia ?? '';
+        // Regenerar nombre con los valores ya cargados (marca y referencia)
+        generarNombrePantalla('editar');
 
         // Campos de precio: el visual muestra con puntos, el hidden guarda número puro
         document.getElementById('editar-precio_compra').value        = precioCompra;
