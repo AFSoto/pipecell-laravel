@@ -199,7 +199,7 @@
 
                     {{-- Stock con semáforo de color (clickeable para ajuste rápido) --}}
                     <button id="stock-display-{{ $producto->id }}"
-                            onclick="abrirAjusteStock({{ $producto->id }}, '{{ addslashes($producto->nombre) }}', {{ $producto->stock }}, {{ $producto->stock_minimo ?? 0 }})"
+                            onclick="abrirAjusteStock({{ $producto->id }}, '{{ addslashes($producto->nombre) }}')"
                             class="group flex items-center gap-1.5 mt-2 hover:opacity-75 transition text-left"
                             title="Ajustar stock">
                         <span class="text-xs font-medium {{ $stockColor }}">{{ $stockLabel }}</span>
@@ -233,7 +233,7 @@
                         </button>
 
                         {{-- Botón ajustar stock --}}
-                        <button onclick="abrirAjusteStock({{ $producto->id }}, '{{ addslashes($producto->nombre) }}', {{ $producto->stock }}, {{ $producto->stock_minimo ?? 0 }})"
+                        <button onclick="abrirAjusteStock({{ $producto->id }}, '{{ addslashes($producto->nombre) }}')"
                                 class="p-2 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl transition"
                                 title="Ajustar stock">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1035,6 +1035,13 @@
     // AJUSTE RÁPIDO DE STOCK
     // ══════════════════════════════════════
 
+    // Fuente de verdad en JS — se actualiza tras cada AJAX exitoso
+    const _stockPorProducto = @json(
+        $productos->getCollection()->mapWithKeys(fn($p) => [
+            $p->id => ['stock' => $p->stock, 'min' => $p->stock_minimo ?? 0]
+        ])
+    );
+
     let _ajusteId         = null;
     let _ajusteStock      = 0;
     let _ajusteStockMin   = 0;
@@ -1045,13 +1052,14 @@
         salida:  'Cantidad a retirar',
     };
 
-    function abrirAjusteStock(id, nombre, stockActual, stockMinimo) {
+    function abrirAjusteStock(id, nombre) {
+        const info = _stockPorProducto[id] ?? { stock: 0, min: 0 };
         _ajusteId       = id;
-        _ajusteStock    = stockActual;
-        _ajusteStockMin = stockMinimo;
+        _ajusteStock    = info.stock;
+        _ajusteStockMin = info.min;
 
         document.getElementById('ajuste-nombre').textContent              = nombre;
-        document.getElementById('ajuste-stock-actual-badge').textContent  = stockActual + ' uds.';
+        document.getElementById('ajuste-stock-actual-badge').textContent  = info.stock + ' uds.';
         document.getElementById('ajuste-cantidad').value                  = '';
         document.getElementById('ajuste-preview-wrap').classList.add('hidden');
         document.getElementById('ajuste-alerta-salida').classList.add('hidden');
@@ -1205,21 +1213,28 @@
     }
 
     function actualizarBadgeStock(productoId, nuevoStock) {
+        // 1. Actualizar la fuente de verdad JS para que el próximo abrirAjusteStock use el valor correcto
+        if (_stockPorProducto[productoId]) {
+            _stockPorProducto[productoId].stock = nuevoStock;
+        }
+
+        // 2. Actualizar el badge visual en la card
         const btn = document.getElementById(`stock-display-${productoId}`);
         if (!btn) return;
 
         const span = btn.querySelector('span');
         if (!span) return;
 
+        const min = _stockPorProducto[productoId]?.min ?? 0;
         let color, label;
 
         if (nuevoStock === 0) {
             color = 'text-red-600';
             label = 'Sin stock';
-        } else if (nuevoStock < _ajusteStockMin) {
+        } else if (nuevoStock < min) {
             color = 'text-red-600';
             label = `${nuevoStock} ${nuevoStock === 1 ? 'unidad' : 'unidades'}`;
-        } else if (nuevoStock == _ajusteStockMin) {
+        } else if (nuevoStock === min) {
             color = 'text-amber-600';
             label = `${nuevoStock} ${nuevoStock === 1 ? 'unidad' : 'unidades'}`;
         } else {
@@ -1227,13 +1242,8 @@
             label = `${nuevoStock} ${nuevoStock === 1 ? 'unidad' : 'unidades'}`;
         }
 
-        span.className = `text-xs font-medium ${color}`;
+        span.className   = `text-xs font-medium ${color}`;
         span.textContent = label;
-
-        // También actualizar el stock interno para que el botón de la card use el valor correcto
-        btn.setAttribute('onclick',
-            `abrirAjusteStock(${productoId}, '${btn.closest('.p-4').querySelector('h3').textContent.trim()}', ${nuevoStock}, ${_ajusteStockMin})`
-        );
     }
 
     // Auto-ocultar alertas flash después de 4 segundos
