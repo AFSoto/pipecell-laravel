@@ -325,6 +325,18 @@
               class="p-6 space-y-5">
             @csrf
 
+            {{-- Errores de validación --}}
+            @if ($errors->any())
+                <div id="crear-errores" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    <p class="text-sm font-semibold text-red-700 mb-1">Corrige los siguientes errores:</p>
+                    <ul class="list-disc list-inside space-y-0.5 text-sm text-red-600">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             {{-- Categoría y Tipo --}}
             <div class="grid grid-cols-2 gap-4">
                 <div>
@@ -476,17 +488,6 @@
                 {{-- Preview de imágenes seleccionadas --}}
                 <div id="preview-imagenes-crear" class="mt-3 flex flex-wrap gap-2"></div>
             </div>
-
-            {{-- Errores de validación --}}
-            @if ($errors->any())
-                <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
-                    <ul class="list-disc list-inside space-y-1">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
 
             <div class="flex items-center justify-end gap-3 pt-2">
                 <button type="button"
@@ -1373,10 +1374,14 @@
         }
     });
 
-    // Si hay errores de validación, re-abrir el modal de creación automáticamente
+    // Si hay errores de validación, re-abrir el modal y hacer scroll al bloque de errores
     @if ($errors->any())
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('modal-producto').classList.remove('hidden');
+            const modal = document.getElementById('modal-producto');
+            modal.classList.remove('hidden');
+            // Scroll al top del contenedor scrollable (el div.relative.bg-white)
+            const contenedor = modal.querySelector('.overflow-y-auto');
+            if (contenedor) contenedor.scrollTop = 0;
         });
     @endif
 </script>
