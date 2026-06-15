@@ -39,7 +39,7 @@ class ProductoController extends Controller
         $stockBajo       = $request->boolean('stock_bajo'); // convierte '1'/'' a true/false
 
         $query = Producto::activos()
-            ->with(['categoria', 'imagenPrincipal'])
+            ->with(['categoria', 'tipoProducto', 'imagenPrincipal'])
             ->when($categoriaFiltro, fn ($q) => $q->deCategoria((int) $categoriaFiltro))
             ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {

@@ -189,6 +189,22 @@
                         <p class="text-xs text-gray-400 font-mono mt-0.5">{{ $producto->codigo }}</p>
                     @endif
 
+                    {{-- Etiquetas de tipo y marco --}}
+                    @if ($producto->tipoProducto || !is_null($producto->marco))
+                        <div class="flex flex-wrap gap-1 mt-1.5">
+                            @if ($producto->tipoProducto)
+                                <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                                    {{ $producto->tipoProducto->nombre }}
+                                </span>
+                            @endif
+                            @if (!is_null($producto->marco))
+                                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 {{ $producto->marco ? 'bg-violet-600 text-white' : 'bg-slate-400 text-white' }} rounded-full">
+                                    {{ $producto->marco ? 'Con marco' : 'Sin marco' }}
+                                </span>
+                            @endif
+                        </div>
+                    @endif
+
                     {{-- Precio de venta --}}
                     <p class="text-base font-bold text-gray-900 mt-2">
                         ${{ number_format($producto->precio_venta, 0, ',', '.') }}
