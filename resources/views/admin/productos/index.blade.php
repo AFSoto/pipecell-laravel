@@ -327,13 +327,23 @@
 
             {{-- Errores de validación --}}
             @if ($errors->any())
-                <div id="crear-errores" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                    <p class="text-sm font-semibold text-red-700 mb-1">Corrige los siguientes errores:</p>
-                    <ul class="list-disc list-inside space-y-0.5 text-sm text-red-600">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
+                <div id="crear-errores" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 transition-opacity duration-500">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <p class="text-sm font-semibold text-red-700 mb-1">Corrige los siguientes errores:</p>
+                            <ul class="list-disc list-inside space-y-0.5 text-sm text-red-600">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                        <button type="button" onclick="ocultarErroresCrear()"
+                                class="flex-shrink-0 p-1 rounded-lg hover:bg-red-100 transition text-red-400 hover:text-red-600">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             @endif
 
@@ -1138,7 +1148,7 @@
         setTimeout(() => {
             noti.classList.add('translate-x-full');
             setTimeout(() => noti.remove(), 300);
-        }, 3000);
+        }, 5000);
     }
 
     // ══════════════════════════════════════
@@ -1374,14 +1384,22 @@
         }
     });
 
+    function ocultarErroresCrear() {
+        const el = document.getElementById('crear-errores');
+        if (!el) return;
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 500);
+    }
+
     // Si hay errores de validación, re-abrir el modal y hacer scroll al bloque de errores
     @if ($errors->any())
         document.addEventListener('DOMContentLoaded', () => {
             const modal = document.getElementById('modal-producto');
             modal.classList.remove('hidden');
-            // Scroll al top del contenedor scrollable (el div.relative.bg-white)
             const contenedor = modal.querySelector('.overflow-y-auto');
             if (contenedor) contenedor.scrollTop = 0;
+            // Auto-ocultar errores después de 3 segundos
+            setTimeout(() => ocultarErroresCrear(), 3000);
         });
     @endif
 </script>

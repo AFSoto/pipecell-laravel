@@ -12,14 +12,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('productos', function (Blueprint $table) {
-            $table->unique(['categoria_id', 'tipo_producto_id', 'nombre'], 'productos_categoria_tipo_nombre_unique');
+            $table->dropUnique('productos_categoria_tipo_nombre_unique');
+            $table->unique(['categoria_id', 'tipo_producto_id', 'marco', 'nombre'], 'productos_unique');
         });
     }
 
     public function down(): void
     {
         Schema::table('productos', function (Blueprint $table) {
-            $table->dropUnique('productos_categoria_tipo_nombre_unique');
+            $table->dropUnique('productos_unique');
+            $table->unique(['categoria_id', 'tipo_producto_id', 'nombre'], 'productos_categoria_tipo_nombre_unique');
         });
     }
 };

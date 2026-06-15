@@ -65,14 +65,25 @@ class UpdateProductoRequest extends FormRequest
     private function reglaNombreUnico(int $productoId): \Closure
     {
         return function ($attribute, $value, $fail) use ($productoId) {
-            $existe = \App\Models\Producto::where('categoria_id', $this->categoria_id)
+            $query = \App\Models\Producto::where('categoria_id', $this->categoria_id)
                 ->where('nombre', $value)
                 ->where('estado', 'activo')
-                ->where('id', '!=', $productoId)
-                ->exists();
+                ->where('id', '!=', $productoId);
 
-            if ($existe) {
-                $fail('Ya existe un producto con ese nombre en esta categoría.');
+            if ($this->tipo_producto_id) {
+                $query->where('tipo_producto_id', $this->tipo_producto_id);
+            } else {
+                $query->whereNull('tipo_producto_id');
+            }
+
+            if (is_null($this->marco)) {
+                $query->whereNull('marco');
+            } else {
+                $query->where('marco', (bool) $this->marco);
+            }
+
+            if ($query->exists()) {
+                $fail('Ya existe un producto con ese nombre, categoría, tipo y configuración de marco.');
             }
         };
     }
