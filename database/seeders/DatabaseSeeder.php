@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             CajaSeeder::class,
             CategoriaSeeder::class,
             TipoProductoSeeder::class,
+            TipoMovimientoStockSeeder::class,
         ]);
     }
 }

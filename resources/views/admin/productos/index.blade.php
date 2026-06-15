@@ -672,14 +672,6 @@
                     </svg>
                     Salida
                 </button>
-                <button id="ajuste-tab-directo"
-                        onclick="setAjusteOperacion('directo')"
-                        class="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-lg transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16"/>
-                    </svg>
-                    Directo
-                </button>
             </div>
 
             {{-- Input de cantidad --}}
@@ -709,6 +701,34 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
                 La cantidad supera el stock disponible. El stock quedará en 0.
+            </div>
+
+            {{-- Motivo del ajuste --}}
+            <div>
+                <label class="text-xs text-gray-500 mb-1.5 block">Motivo <span class="text-red-500">*</span></label>
+                <select id="ajuste-tipo_movimiento_id"
+                        onchange="toggleNuevoTipo(this.value)"
+                        class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option value="">Selecciona un motivo...</option>
+                    @foreach ($tiposMovimiento as $tipo)
+                        <option value="{{ $tipo->id }}">{{ $tipo->nombre }}</option>
+                    @endforeach
+                    <option value="nuevo">— Otro (crear nuevo) —</option>
+                </select>
+
+                <input type="text" id="ajuste-nuevo_tipo"
+                       placeholder="Nombre del nuevo motivo..."
+                       maxlength="100"
+                       class="hidden mt-2 w-full px-3 py-2.5 border border-blue-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition bg-blue-50">
+            </div>
+
+            {{-- Nota opcional --}}
+            <div>
+                <label class="text-xs text-gray-500 mb-1.5 block">Nota <span class="text-gray-400">(opcional)</span></label>
+                <input type="text" id="ajuste-nota"
+                       placeholder="Ej: Recepción de mercancía proveedor X"
+                       maxlength="500"
+                       class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
             </div>
         </div>
 
@@ -1023,7 +1043,6 @@
     const _ajusteLabels = {
         entrada: 'Cantidad a ingresar',
         salida:  'Cantidad a retirar',
-        directo: 'Nuevo stock total',
     };
 
     function abrirAjusteStock(id, nombre, stockActual, stockMinimo) {
@@ -1036,6 +1055,10 @@
         document.getElementById('ajuste-cantidad').value                  = '';
         document.getElementById('ajuste-preview-wrap').classList.add('hidden');
         document.getElementById('ajuste-alerta-salida').classList.add('hidden');
+        document.getElementById('ajuste-tipo_movimiento_id').value        = '';
+        document.getElementById('ajuste-nuevo_tipo').value                = '';
+        document.getElementById('ajuste-nuevo_tipo').classList.add('hidden');
+        document.getElementById('ajuste-nota').value                      = '';
 
         setAjusteOperacion('entrada');
 
@@ -1047,10 +1070,21 @@
         document.getElementById('modal-ajuste-stock').classList.add('hidden');
     }
 
+    function toggleNuevoTipo(valor) {
+        const input = document.getElementById('ajuste-nuevo_tipo');
+        if (valor === 'nuevo') {
+            input.classList.remove('hidden');
+            input.focus();
+        } else {
+            input.classList.add('hidden');
+            input.value = '';
+        }
+    }
+
     function setAjusteOperacion(op) {
         _ajusteOperacion = op;
 
-        ['entrada', 'salida', 'directo'].forEach(o => {
+        ['entrada', 'salida'].forEach(o => {
             const btn = document.getElementById(`ajuste-tab-${o}`);
             const activo = o === op;
             btn.classList.toggle('bg-white',      activo);
@@ -1071,9 +1105,8 @@
         const cantidad = parseInt(document.getElementById('ajuste-cantidad').value) || 0;
         let nuevo;
 
-        if (_ajusteOperacion === 'entrada')      nuevo = _ajusteStock + cantidad;
-        else if (_ajusteOperacion === 'salida')  nuevo = Math.max(0, _ajusteStock - cantidad);
-        else                                     nuevo = cantidad;
+        if (_ajusteOperacion === 'entrada') nuevo = _ajusteStock + cantidad;
+        else                               nuevo = Math.max(0, _ajusteStock - cantidad);
 
         const previewWrap = document.getElementById('ajuste-preview-wrap');
         const alertaSalida = document.getElementById('ajuste-alerta-salida');
@@ -1103,15 +1136,44 @@
     }
 
     function guardarAjusteStock() {
-        const cantidad = parseInt(document.getElementById('ajuste-cantidad').value);
+        const cantidad       = parseInt(document.getElementById('ajuste-cantidad').value);
+        const tipoSelect     = document.getElementById('ajuste-tipo_movimiento_id').value;
+        const nuevoTipo      = document.getElementById('ajuste-nuevo_tipo').value.trim();
+        const nota           = document.getElementById('ajuste-nota').value.trim();
 
         if (isNaN(cantidad) || cantidad < 0) {
             document.getElementById('ajuste-cantidad').focus();
+            mostrarNotificacion('Ingresa una cantidad válida.', 'error');
             return;
         }
 
+        // Validar motivo
+        if (!tipoSelect && !nuevoTipo) {
+            document.getElementById('ajuste-tipo_movimiento_id').focus();
+            mostrarNotificacion('Debes seleccionar o escribir un motivo.', 'error');
+            return;
+        }
+
+        if (tipoSelect === 'nuevo' && !nuevoTipo) {
+            document.getElementById('ajuste-nuevo_tipo').focus();
+            mostrarNotificacion('Escribe el nombre del nuevo motivo.', 'error');
+            return;
+        }
+
+        const payload = {
+            operacion: _ajusteOperacion,
+            cantidad:  cantidad,
+            nota:      nota || null,
+        };
+
+        if (tipoSelect && tipoSelect !== 'nuevo') {
+            payload.tipo_movimiento_id = tipoSelect;
+        } else {
+            payload.nuevo_tipo = nuevoTipo;
+        }
+
         const btn = document.getElementById('ajuste-btn-guardar');
-        btn.disabled = true;
+        btn.disabled    = true;
         btn.textContent = 'Guardando…';
 
         const baseUrl = '{{ url("admin/productos") }}';
@@ -1119,19 +1181,15 @@
         fetch(`${baseUrl}/${_ajusteId}/stock`, {
             method: 'PATCH',
             headers: {
-                'Content-Type':  'application/json',
-                'X-CSRF-TOKEN':  csrfToken,
-                'Accept':        'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept':       'application/json',
             },
-            body: JSON.stringify({
-                operacion: _ajusteOperacion,
-                cantidad:  cantidad,
-            }),
+            body: JSON.stringify(payload),
         })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                // Actualizar badge de stock en la card sin recargar
                 actualizarBadgeStock(_ajusteId, data.stock_nuevo);
                 cerrarAjusteStock();
                 mostrarNotificacion('Stock actualizado correctamente');
@@ -1141,7 +1199,7 @@
         })
         .catch(() => mostrarNotificacion('Error de conexión', 'error'))
         .finally(() => {
-            btn.disabled = false;
+            btn.disabled    = false;
             btn.textContent = 'Guardar';
         });
     }

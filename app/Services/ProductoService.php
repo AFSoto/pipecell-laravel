@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\MovimientoStock;
 use App\Models\Producto;
 use App\Models\ProductoImagen;
+use App\Models\TipoMovimientoStock;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -38,15 +40,17 @@ class ProductoService
 
             // ── 1. Crear el producto ──
             $producto = Producto::create([
-                'categoria_id'  => $datos['categoria_id'],
-                'codigo'        => $datos['codigo'] ?? null,
-                'nombre'        => $datos['nombre'],
-                'descripcion'   => $datos['descripcion'] ?? null,
-                'precio_compra' => $datos['precio_compra'],
-                'precio_venta'  => $datos['precio_venta'],
-                'stock'         => $datos['stock'] ?? 0,
-                'stock_minimo'  => $datos['stock_minimo'] ?? 3,
-                'estado'        => 'activo',
+                'categoria_id'     => $datos['categoria_id'],
+                'tipo_producto_id' => $datos['tipo_producto_id'] ?? null,
+                'codigo'           => $datos['codigo'] ?? null,
+                'nombre'           => $datos['nombre'],
+                'descripcion'      => $datos['descripcion'] ?? null,
+                'marco'            => $datos['marco'] ?? null,
+                'precio_compra'    => $datos['precio_compra'],
+                'precio_venta'     => $datos['precio_venta'],
+                'stock'            => $datos['stock'] ?? 0,
+                'stock_minimo'     => $datos['stock_minimo'] ?? 3,
+                'estado'           => 'activo',
             ]);
 
             // ── 2. Guardar imágenes si se enviaron ──
@@ -74,14 +78,16 @@ class ProductoService
 
             // Actualizar los campos del producto
             $producto->update([
-                'categoria_id'  => $datos['categoria_id'],
-                'codigo'        => $datos['codigo'] ?? null,
-                'nombre'        => $datos['nombre'],
-                'descripcion'   => $datos['descripcion'] ?? null,
-                'precio_compra' => $datos['precio_compra'],
-                'precio_venta'  => $datos['precio_venta'],
-                'stock'         => $datos['stock'],
-                'stock_minimo'  => $datos['stock_minimo'] ?? 3,
+                'categoria_id'     => $datos['categoria_id'],
+                'tipo_producto_id' => $datos['tipo_producto_id'] ?? null,
+                'codigo'           => $datos['codigo'] ?? null,
+                'nombre'           => $datos['nombre'],
+                'descripcion'      => $datos['descripcion'] ?? null,
+                'marco'            => $datos['marco'] ?? null,
+                'precio_compra'    => $datos['precio_compra'],
+                'precio_venta'     => $datos['precio_venta'],
+                'stock'            => $datos['stock'],
+                'stock_minimo'     => $datos['stock_minimo'] ?? 3,
             ]);
 
             // Si vienen imágenes nuevas, agregarlas
@@ -98,6 +104,62 @@ class ProductoService
             }
 
             return $producto->fresh(['categoria', 'imagenPrincipal']);
+        });
+    }
+
+    /**
+     * Ajusta el stock de un producto y registra el movimiento en una sola transacción.
+     *
+     * Operaciones:
+     *   - 'entrada' : suma cantidad al stock actual
+     *   - 'salida'  : resta cantidad (nunca baja de 0)
+     *
+     * Si se envía 'nuevo_tipo', crea el TipoMovimientoStock antes de continuar
+     * (usando firstOrCreate para idempotencia). Todo en la misma transacción.
+     *
+     * @param Producto $producto   Producto a ajustar
+     * @param array    $datos      Datos validados del request
+     * @param int      $userId     ID del usuario autenticado
+     */
+    public function ajustarStock(Producto $producto, array $datos, int $userId): MovimientoStock
+    {
+        return DB::transaction(function () use ($producto, $datos, $userId) {
+
+            // 1. Resolver tipo de movimiento — existente o nuevo creado al vuelo
+            if (! empty($datos['nuevo_tipo'])) {
+                $tipo             = TipoMovimientoStock::firstOrCreate(['nombre' => trim($datos['nuevo_tipo'])]);
+                $tipoMovimientoId = $tipo->id;
+            } else {
+                $tipoMovimientoId = $datos['tipo_movimiento_id'];
+            }
+
+            $stockAnterior = $producto->stock;
+
+            // 2. Aplicar el cambio en la tabla productos
+            if ($datos['operacion'] === 'entrada') {
+                $producto->increment('stock', $datos['cantidad']);
+            } else {
+                $producto->decrement('stock', min($datos['cantidad'], $producto->stock));
+            }
+
+            $producto->refresh();
+            $stockNuevo = $producto->stock;
+
+            // 3. Cantidad con signo: positivo = entrada, negativo = salida
+            $cantidadSignada = $datos['operacion'] === 'entrada'
+                ? $datos['cantidad']
+                : -(min($datos['cantidad'], $stockAnterior));
+
+            // 4. Registrar el movimiento
+            return MovimientoStock::create([
+                'producto_id'        => $producto->id,
+                'user_id'            => $userId,
+                'tipo_movimiento_id' => $tipoMovimientoId,
+                'cantidad'           => $cantidadSignada,
+                'stock_anterior'     => $stockAnterior,
+                'stock_nuevo'        => $stockNuevo,
+                'nota'               => $datos['nota'] ?? null,
+            ]);
         });
     }
 

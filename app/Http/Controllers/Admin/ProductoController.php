@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateProductoRequest;
 use App\Models\Categoria;
 use App\Models\Producto;
 use App\Models\ProductoImagen;
+use App\Models\TipoMovimientoStock;
 use App\Models\TipoProducto;
 use App\Services\ProductoService;
 use Illuminate\Http\Request;
@@ -52,10 +53,11 @@ class ProductoController extends Controller
         // Paginamos de 12 en 12 para el grid de 4 columnas (3 filas completas)
         $productos = $query->paginate(12)->withQueryString();
 
-        $categorias     = Categoria::activas()->orderBy('nombre')->get();
-        $tiposProducto  = TipoProducto::orderBy('nombre')->get();
+        $categorias         = Categoria::activas()->orderBy('nombre')->get();
+        $tiposProducto      = TipoProducto::orderBy('nombre')->get();
+        $tiposMovimiento    = TipoMovimientoStock::orderBy('nombre')->get();
 
-        return view('admin.productos.index', compact('productos', 'categorias', 'tiposProducto'));
+        return view('admin.productos.index', compact('productos', 'categorias', 'tiposProducto', 'tiposMovimiento'));
     }
 
     /**
@@ -105,28 +107,40 @@ class ProductoController extends Controller
     }
 
     /**
-     * Ajusta el stock de un producto vía AJAX.
-     * Soporta tres operaciones: entrada (+), salida (-) y ajuste directo (=).
+     * Ajusta el stock vía AJAX y deja trazabilidad en movimientos_stock.
+     * Delega toda la lógica al ProductoService (transacción incluida).
      */
     public function ajustarStock(Request $request, Producto $producto)
     {
         $data = $request->validate([
-            'operacion' => ['required', 'in:entrada,salida,directo'],
-            'cantidad'  => ['required', 'integer', 'min:0'],
+            'operacion'          => ['required', 'in:entrada,salida'],
+            'cantidad'           => ['required', 'integer', 'min:0'],
+            'tipo_movimiento_id' => ['nullable', 'exists:tipos_movimiento_stock,id'],
+            'nuevo_tipo'         => ['nullable', 'string', 'max:100'],
+            'nota'               => ['nullable', 'string', 'max:500'],
         ]);
 
-        match ($data['operacion']) {
-            'entrada' => $producto->increment('stock', $data['cantidad']),
-            'salida'  => $producto->decrement('stock', min($data['cantidad'], $producto->stock)),
-            'directo' => $producto->update(['stock' => $data['cantidad']]),
-        };
+        if (empty($data['tipo_movimiento_id']) && empty($data['nuevo_tipo'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debes seleccionar o escribir un motivo del ajuste.',
+            ], 422);
+        }
 
-        $producto->refresh();
+        try {
+            $this->productoService->ajustarStock($producto, $data, $request->user()->id);
+            $producto->refresh();
 
-        return response()->json([
-            'success'     => true,
-            'stock_nuevo' => $producto->stock,
-        ]);
+            return response()->json([
+                'success'     => true,
+                'stock_nuevo' => $producto->stock,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al ajustar el stock: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
