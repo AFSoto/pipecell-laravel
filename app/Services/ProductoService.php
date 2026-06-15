@@ -133,24 +133,34 @@ class ProductoService
                 $tipoMovimientoId = $datos['tipo_movimiento_id'];
             }
 
-            $stockAnterior = $producto->stock;
+            // 2. Releer el producto dentro de la transacción con bloqueo de fila.
+            // Evita race conditions donde otro proceso (p.ej. una venta) modificó
+            // el stock entre el route model binding y este momento.
+            $producto      = Producto::lockForUpdate()->findOrFail($producto->id);
+            $stockAnterior = (int) $producto->stock;
 
-            // 2. Aplicar el cambio en la tabla productos
+            if ($datos['operacion'] === 'salida' && $datos['cantidad'] > $stockAnterior) {
+                throw new \InvalidArgumentException(
+                    "No puedes retirar más unidades de las disponibles. Stock actual: {$stockAnterior} uds."
+                );
+            }
+
+            // 3. Aplicar el cambio en la tabla productos
             if ($datos['operacion'] === 'entrada') {
                 $producto->increment('stock', $datos['cantidad']);
             } else {
-                $producto->decrement('stock', min($datos['cantidad'], $producto->stock));
+                $producto->decrement('stock', $datos['cantidad']);
             }
 
             $producto->refresh();
-            $stockNuevo = $producto->stock;
+            $stockNuevo = (int) $producto->stock;
 
-            // 3. Cantidad con signo: positivo = entrada, negativo = salida
+            // 4. Cantidad con signo: positivo = entrada, negativo = salida
             $cantidadSignada = $datos['operacion'] === 'entrada'
                 ? $datos['cantidad']
-                : -(min($datos['cantidad'], $stockAnterior));
+                : -$datos['cantidad'];
 
-            // 4. Registrar el movimiento
+            // 5. Registrar el movimiento
             return MovimientoStock::create([
                 'producto_id'        => $producto->id,
                 'user_id'            => $userId,

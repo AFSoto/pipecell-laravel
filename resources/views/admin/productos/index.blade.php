@@ -700,7 +700,7 @@
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
-                La cantidad supera el stock disponible. El stock quedará en 0.
+                La cantidad supera el stock disponible. No se puede guardar.
             </div>
 
             {{-- Motivo del ajuste --}}
@@ -1149,9 +1149,15 @@
         const nuevoTipo      = document.getElementById('ajuste-nuevo_tipo').value.trim();
         const nota           = document.getElementById('ajuste-nota').value.trim();
 
-        if (isNaN(cantidad) || cantidad < 0) {
+        if (isNaN(cantidad) || cantidad <= 0) {
             document.getElementById('ajuste-cantidad').focus();
-            mostrarNotificacion('Ingresa una cantidad válida.', 'error');
+            mostrarNotificacion('Ingresa una cantidad mayor a 0.', 'error');
+            return;
+        }
+
+        if (_ajusteOperacion === 'salida' && cantidad > _ajusteStock) {
+            document.getElementById('ajuste-cantidad').focus();
+            mostrarNotificacion(`No puedes retirar más de ${_ajusteStock} uds. disponibles.`, 'error');
             return;
         }
 
