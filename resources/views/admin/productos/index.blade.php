@@ -441,6 +441,8 @@
                     <label class="text-xs text-gray-500 mb-1 block">Stock actual *</label>
                     <input type="number" name="stock" min="0" required
                            value="{{ old('stock', 0) }}"
+                           onfocus="if(this.value==='0') this.value=''"
+                           onblur="if(this.value==='') this.value='0'"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
                 <div>
