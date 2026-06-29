@@ -403,12 +403,21 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
                             </button>
-                            {{-- Botón registrar abono --}}
+                            {{-- Botón registrar abono (solo visible si hay saldo pendiente) --}}
                             <button onclick="abrirModalAbono({{ $rep->id }}, '{{ $rep->nombre_cliente }}', {{ $rep->saldo_pendiente }})"
-                                    class="text-blue-600 hover:text-blue-800 transition"
+                                    class="text-blue-600 hover:text-blue-800 transition {{ $rep->saldo_pendiente <= 0 ? 'hidden' : '' }}"
                                     title="Registrar abono">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </button>
+                            {{-- Botón pagar saldo total (solo visible si hay saldo pendiente) --}}
+                            <button onclick="pagarSaldoTotal({{ $rep->id }})"
+                                    class="text-green-600 hover:text-green-800 transition {{ $rep->saldo_pendiente <= 0 ? 'hidden' : '' }}"
+                                    data-btn="pagar-total"
+                                    title="Pagar saldo total">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
                             </button>
                         </div>
@@ -800,6 +809,7 @@
 @endsection
 
 @section('scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
@@ -861,6 +871,63 @@ function abrirModalEditar(btn) {
     document.getElementById('edit-errores').classList.add('hidden');
     document.getElementById('edit-errores-lista').innerHTML = '';
     document.getElementById('modal-editar').classList.remove('hidden');
+}
+
+// Paga de un clic el saldo pendiente completo desde el botón de la fila.
+// Lee el saldo vigente directo de la celda (única fuente de verdad, siempre fresca)
+// y reutiliza el mismo endpoint de abonos (con lockForUpdate del lado del servidor).
+function pagarSaldoTotal(reparacionId) {
+    const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
+    if (!fila) return;
+
+    const saldo = parseInt(fila.querySelector('[data-celda="saldo"]').textContent.replace(/\D/g, '')) || 0;
+    if (saldo <= 0) {
+        mostrarNotificacion('Esta reparación ya está pagada completamente.', 'error');
+        return;
+    }
+
+    const montoFmt = '$' + saldo.toLocaleString('es-CO');
+
+    Swal.fire({
+        title: '¿Pagar saldo total?',
+        html: `Se registrará un pago de <strong>${montoFmt}</strong> y la reparación quedará pagada al 100%.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, pagar total',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#16a34a',
+        cancelButtonColor: '#6b7280',
+        reverseButtons: true,
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+
+        const btn = fila.querySelector('button[data-btn="pagar-total"]');
+        if (btn) btn.disabled = true;
+
+        fetch(`/admin/reparaciones/${reparacionId}/abono`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ monto: saldo, nota: 'Pago total del saldo' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                aplicarPagoEnFila(reparacionId, saldo, 'Pago total del saldo');
+                mostrarNotificacion('Saldo pagado en su totalidad');
+            } else {
+                mostrarNotificacion('Error: ' + data.message, 'error');
+                if (btn) btn.disabled = false;
+            }
+        })
+        .catch(() => {
+            mostrarNotificacion('Error de conexión', 'error');
+            if (btn) btn.disabled = false;
+        });
+    });
 }
 
 function cerrarModalEditar() {
@@ -1145,6 +1212,57 @@ function actualizarFilaEdicion(datos) {
     document.getElementById('modal-abono').classList.remove('hidden');
 }
 
+    // Aplica un pago ya confirmado por el backend sobre la fila de la tabla:
+    // recalcula abonado/saldo, refresca el botón de abono y mantiene el data-edit
+    // al día para que el modal de detalle reabra con cifras correctas.
+    // Reutilizada por guardarAbono() (abono parcial) y pagarSaldoTotal() (pago total).
+    function aplicarPagoEnFila(reparacionId, montoNum, nota) {
+    const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
+    if (!fila) return;
+
+    const celdaAbonado = fila.querySelector('[data-celda="abonado"]');
+    const celdaValor   = fila.querySelector('[data-celda="valor"]');
+    const celdaSaldo   = fila.querySelector('[data-celda="saldo"]');
+
+    const abonadoActual = parseInt(celdaAbonado.textContent.replace(/\D/g, '')) || 0;
+    const valorTotal    = parseInt(celdaValor.textContent.replace(/\D/g, '')) || 0;
+    const nuevoAbonado  = abonadoActual + parseInt(montoNum);
+    const nuevoSaldo    = valorTotal - nuevoAbonado;
+
+    celdaAbonado.textContent = '$' + nuevoAbonado.toLocaleString('es-CO');
+    celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
+
+    // Actualizar el saldo en el botón de abono y ocultarlo si ya no queda saldo
+    const btnAbono = fila.querySelector('button[title="Registrar abono"]');
+    if (btnAbono) {
+        const nombreCliente = fila.querySelector('[data-celda="cliente"] p').textContent;
+        btnAbono.setAttribute('onclick', `abrirModalAbono(${reparacionId}, '${nombreCliente}', ${nuevoSaldo})`);
+        btnAbono.classList.toggle('hidden', nuevoSaldo <= 0);
+    }
+
+    // Mostrar/ocultar el botón de pago total según quede o no saldo
+    const btnPagarTotal = fila.querySelector('button[data-btn="pagar-total"]');
+    if (btnPagarTotal) {
+        btnPagarTotal.classList.toggle('hidden', nuevoSaldo <= 0);
+        btnPagarTotal.disabled = false;
+    }
+
+    // Mantener el data-edit fresco (abonos + saldo) para reaperturas del detalle
+    try {
+        const datos = JSON.parse(fila.dataset.edit);
+        datos.abonos = datos.abonos || [];
+        datos.abonos.push({
+            monto: parseInt(montoNum),
+            nota:  nota || '',
+            fecha: new Date().toLocaleString('es-CO', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: true,
+            }),
+        });
+        fila.dataset.edit = JSON.stringify(datos);
+    } catch (e) { /* data-edit ausente o inválido: la fila igual quedó actualizada */ }
+}
+
     function guardarAbono() {
     const reparacionId = document.getElementById('abono-reparacion-id').value;
     const monto        = document.getElementById('abono-monto').value;
@@ -1168,29 +1286,7 @@ function actualizarFilaEdicion(datos) {
     .then(data => {
         if (data.success) {
             document.getElementById('modal-abono').classList.add('hidden');
-
-            const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
-            if (fila) {
-                const celdaAbonado = fila.querySelector('[data-celda="abonado"]');
-                const celdaValor   = fila.querySelector('[data-celda="valor"]');
-                const celdaSaldo   = fila.querySelector('[data-celda="saldo"]');
-
-                const abonadoActual = parseInt(celdaAbonado.textContent.replace(/\D/g, '')) || 0;
-                const valorTotal    = parseInt(celdaValor.textContent.replace(/\D/g, '')) || 0;
-                const nuevoAbonado  = abonadoActual + parseInt(monto);
-                const nuevoSaldo    = valorTotal - nuevoAbonado;
-
-                celdaAbonado.textContent = '$' + nuevoAbonado.toLocaleString('es-CO');
-celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
-
-// Actualizar el saldo en el botón de abono para que el modal lo lea fresco
-const btnAbono = fila.querySelector('button[title="Registrar abono"]');
-if (btnAbono) {
-    const nombreCliente = fila.querySelector('[data-celda="cliente"] p').textContent;
-    btnAbono.setAttribute('onclick', `abrirModalAbono(${reparacionId}, '${nombreCliente}', ${nuevoSaldo})`);
-}
-            }
-
+            aplicarPagoEnFila(reparacionId, monto, nota);
             mostrarNotificacion('Abono registrado correctamente');
         } else {
             mostrarNotificacion('Error: ' + data.message, 'error');
