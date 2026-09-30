@@ -296,6 +296,7 @@
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Fecha</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cliente</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Equipo</th>
+                    <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Descripción</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Caja</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Valor</th>
                     <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Abonado</th>
@@ -360,6 +361,11 @@
                     <td class="py-3 px-4" data-celda="equipo">
     <p class="text-gray-700">{{ $rep->marca }}</p>
     <p class="text-xs text-gray-400">{{ $rep->modelo ?? '—' }}</p>
+</td>
+
+                    {{-- Descripción de la falla recortada a 20 caracteres; el texto completo va en el tooltip --}}
+                    <td class="py-3 px-4 text-xs text-gray-500 whitespace-nowrap" data-celda="descripcion" title="{{ $rep->descripcion_falla }}">
+    {{ $rep->descripcion_falla ? Str::limit($rep->descripcion_falla, 20) : '—' }}
 </td>
 
                     <td class="py-3 px-4">
@@ -1006,6 +1012,14 @@ function actualizarFilaEdicion(datos) {
     editFila.querySelector('[data-celda="equipo"]').innerHTML = `
         <p class="text-gray-700">${datos.marca}</p>
         <p class="text-xs text-gray-400">${datos.modelo || '—'}</p>`;
+
+    // Mismo recorte que Str::limit(20) en Blade
+    const descripcion = datos.descripcion_falla || '';
+    const celdaDescripcion = editFila.querySelector('[data-celda="descripcion"]');
+    celdaDescripcion.textContent = !descripcion
+        ? '—'
+        : descripcion.length > 20 ? descripcion.slice(0, 20).trimEnd() + '...' : descripcion;
+    celdaDescripcion.title = descripcion;
 
     editFila.querySelector('[data-celda="valor"]').textContent = '$' + datos.valor_total.toLocaleString('es-CO');
 
