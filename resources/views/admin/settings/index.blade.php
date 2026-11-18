@@ -70,7 +70,7 @@
                         <td class="px-6 py-3">
                             <div class="flex items-center justify-end gap-2">
                                 {{-- Editar --}}
-                                <button onclick="abrirModalEditar({{ $tipo->id }}, '{{ addslashes($tipo->nombre) }}')"
+                                <button onclick="abrirModalEditar({{ $tipo->id }}, @js($tipo->nombre))"
                                         class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
                                         title="Editar">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,7 +80,7 @@
                                 </button>
 
                                 {{-- Eliminar --}}
-                                <button onclick="abrirModalEliminar({{ $tipo->id }}, '{{ addslashes($tipo->nombre) }}', {{ $tipo->productos_count }})"
+                                <button onclick="abrirModalEliminar({{ $tipo->id }}, @js($tipo->nombre), {{ $tipo->productos_count }})"
                                         class="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
                                         title="Eliminar">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

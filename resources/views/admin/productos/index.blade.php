@@ -221,7 +221,7 @@
 
                     {{-- Stock con semáforo de color (clickeable para ajuste rápido) --}}
                     <button id="stock-display-{{ $producto->id }}"
-                            onclick="abrirAjusteStock({{ $producto->id }}, '{{ addslashes($producto->nombre) }}')"
+                            onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre))"
                             class="group flex items-center gap-1.5 mt-2 hover:opacity-75 transition text-left"
                             title="Ajustar stock">
                         <span class="text-xs font-medium {{ $stockColor }}">{{ $stockLabel }}</span>
@@ -232,21 +232,21 @@
 
                     {{-- Botones de acción --}}
                     <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
-                        {{-- Botón editar --}}
+                        {{-- Botón editar. @js() escapa comillas y saltos de línea para JavaScript --}}
                         <button onclick="abrirEditarProducto(
                                     {{ $producto->id }},
                                     {{ $producto->categoria_id }},
                                     {{ $producto->tipo_producto_id ?? 'null' }},
-                                    '{{ addslashes($producto->codigo ?? '') }}',
-                                    '{{ addslashes($producto->nombre) }}',
-                                    '{{ addslashes($producto->descripcion ?? '') }}',
+                                    @js($producto->codigo ?? ''),
+                                    @js($producto->nombre),
+                                    @js($producto->descripcion ?? ''),
                                     {{ $producto->precio_compra }},
                                     {{ $producto->precio_venta }},
                                     {{ $producto->stock }},
                                     {{ $producto->stock_minimo }},
                                     {{ is_null($producto->marco) ? 'null' : ($producto->marco ? '1' : '0') }},
-                                    '{{ addslashes($producto->marca ?? '') }}',
-                                    '{{ addslashes($producto->referencia ?? '') }}',
+                                    @js($producto->marca ?? ''),
+                                    @js($producto->referencia ?? ''),
                                     {{ $producto->imagenes->map(fn($i) => ['id' => $i->id, 'path' => $i->path, 'es_principal' => $i->es_principal])->toJson() }}
                                 )"
                                 class="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
@@ -257,7 +257,7 @@
                         </button>
 
                         {{-- Botón ajustar stock --}}
-                        <button onclick="abrirAjusteStock({{ $producto->id }}, '{{ addslashes($producto->nombre) }}')"
+                        <button onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre))"
                                 class="p-2 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl transition"
                                 title="Ajustar stock">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,7 +268,7 @@
                         {{-- Botón eliminar --}}
                         <form method="POST"
                               action="{{ route('admin.productos.destroy', $producto) }}"
-                              onsubmit="return confirm('¿Desactivar «{{ $producto->nombre }}»?')">
+                              onsubmit="return confirm(@js('¿Desactivar «' . $producto->nombre . '»?'))">
                             @csrf
                             @method('DELETE')
                             <button type="submit"

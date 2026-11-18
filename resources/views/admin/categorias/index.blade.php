@@ -62,8 +62,8 @@
 
                     {{-- Botones de acción — visibles al hacer hover --}}
                     <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                        {{-- Botón editar --}}
-                        <button onclick="abrirEditarCategoria({{ $categoria->id }}, '{{ addslashes($categoria->nombre) }}', '{{ addslashes($categoria->descripcion ?? '') }}')"
+                        {{-- Botón editar. @js() escapa comillas y saltos de línea para JavaScript --}}
+                        <button onclick="abrirEditarCategoria({{ $categoria->id }}, @js($categoria->nombre), @js($categoria->descripcion ?? ''))"
                                 class="p-2 rounded-xl hover:bg-blue-50 hover:text-blue-600 text-gray-400 transition"
                                 title="Editar">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -74,7 +74,7 @@
                         {{-- Botón eliminar — form con DELETE method y confirmación --}}
                         <form method="POST"
                               action="{{ route('admin.categorias.destroy', $categoria) }}"
-                              onsubmit="return confirm('¿Desactivar la categoría «{{ $categoria->nombre }}»? Esto la ocultará del inventario.')">
+                              onsubmit="return confirm(@js('¿Desactivar la categoría «' . $categoria->nombre . '»? Esto la ocultará del inventario.'))">
                             @csrf
                             @method('DELETE')
                             <button type="submit"

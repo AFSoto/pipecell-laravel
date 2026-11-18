@@ -423,9 +423,11 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
                             </button>
-                            {{-- Botón registrar abono (solo visible si hay saldo pendiente) --}}
-                            <button onclick="abrirModalAbono({{ $rep->id }}, '{{ $rep->nombre_cliente }}', {{ $rep->saldo_pendiente }})"
+                            {{-- Botón registrar abono (solo visible si hay saldo pendiente).
+                                 No lleva datos en el onclick: abrirModalAbono() los lee de la fila --}}
+                            <button onclick="abrirModalAbono(this)"
                                     class="text-blue-600 hover:text-blue-800 transition {{ $rep->saldo_pendiente <= 0 ? 'hidden' : '' }}"
+                                    data-btn="abono"
                                     title="Registrar abono">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -892,19 +894,29 @@ function abrirModalEditar(btn) {
 
     if (datos.abonos && datos.abonos.length > 0) {
         vacio.classList.add('hidden');
+        // Se arma con textContent: la nota la escribe el usuario (ej: "pagó <50%")
         datos.abonos.forEach(abono => {
             const item = document.createElement('div');
             item.className = 'flex items-start justify-between gap-3 bg-gray-50 rounded-xl px-4 py-3';
-            item.innerHTML = `
-                <div>
-                    <p class="text-xs text-gray-400">${abono.fecha}</p>
-                    ${abono.nota
-                        ? `<p class="text-xs text-gray-500 mt-0.5 italic">${abono.nota}</p>`
-                        : ''}
-                </div>
-                <span class="text-sm font-semibold text-green-600 whitespace-nowrap">
-                    $${abono.monto.toLocaleString('es-CO')}
-                </span>`;
+
+            const info  = document.createElement('div');
+            const fecha = document.createElement('p');
+            fecha.className   = 'text-xs text-gray-400';
+            fecha.textContent = abono.fecha;
+            info.appendChild(fecha);
+
+            if (abono.nota) {
+                const nota = document.createElement('p');
+                nota.className   = 'text-xs text-gray-500 mt-0.5 italic';
+                nota.textContent = abono.nota;
+                info.appendChild(nota);
+            }
+
+            const monto = document.createElement('span');
+            monto.className   = 'text-sm font-semibold text-green-600 whitespace-nowrap';
+            monto.textContent = '$' + abono.monto.toLocaleString('es-CO');
+
+            item.append(info, monto);
             lista.appendChild(item);
         });
     } else {
@@ -923,7 +935,7 @@ function pagarSaldoTotal(reparacionId) {
     const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
     if (!fila) return;
 
-    const saldo = parseInt(fila.querySelector('[data-celda="saldo"]').textContent.replace(/\D/g, '')) || 0;
+    const saldo = leerSaldoDeFila(fila);
     if (saldo <= 0) {
         mostrarNotificacion('Esta reparación ya está pagada completamente.', 'error');
         return;
@@ -986,8 +998,7 @@ function guardarEdicion() {
     const valor  = document.getElementById('edit-valor_total').value;
 
     if (!nombre || !marca || !valor) {
-        document.getElementById('edit-errores-lista').innerHTML = '<li>Nombre, marca y valor total son obligatorios.</li>';
-        document.getElementById('edit-errores').classList.remove('hidden');
+        mostrarErroresEdicion(['Nombre, marca y valor total son obligatorios.']);
         return;
     }
 
@@ -1033,8 +1044,7 @@ function guardarEdicion() {
             const errores = data.errors
                 ? Object.values(data.errors).flat()
                 : [data.message];
-            document.getElementById('edit-errores-lista').innerHTML = errores.map(e => `<li>${e}</li>`).join('');
-            document.getElementById('edit-errores').classList.remove('hidden');
+            mostrarErroresEdicion(errores);
         }
     })
     .catch(() => {
@@ -1042,6 +1052,17 @@ function guardarEdicion() {
         btn.textContent = 'Guardar cambios';
         mostrarNotificacion('Error de conexión', 'error');
     });
+}
+
+// Pinta la lista de errores del modal de edición. textContent: los mensajes
+// pueden incluir datos escritos por el usuario (ej: el nombre de un producto).
+function mostrarErroresEdicion(errores) {
+    document.getElementById('edit-errores-lista').replaceChildren(...errores.map(texto => {
+        const item = document.createElement('li');
+        item.textContent = texto;
+        return item;
+    }));
+    document.getElementById('edit-errores').classList.remove('hidden');
 }
 
 function actualizarFilaEdicion(datos) {
@@ -1081,6 +1102,9 @@ function actualizarFilaEdicion(datos) {
         <span class="${saldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">
             $${saldo.toLocaleString('es-CO')}
         </span>`;
+
+    // Si el valor total cambió, el saldo también: mostrar u ocultar Abono y Pagar total
+    actualizarBotonesDePago(editFila, saldo);
 
     // Actualizar data-edit con valores frescos para una segunda edición
     editFila.dataset.edit = JSON.stringify({
@@ -1443,9 +1467,38 @@ function actualizarFilaEdicion(datos) {
     // ══════════════════════════════════════
     // MODAL DE ABONOS
     // ══════════════════════════════════════
-    function abrirModalAbono(reparacionId, clienteNombre, saldo) {
-    document.getElementById('abono-reparacion-id').value        = reparacionId;
-    document.getElementById('abono-cliente-nombre').textContent = clienteNombre;
+    /**
+     * Lee el saldo pendiente de la celda de la fila: es la única fuente de verdad,
+     * porque se actualiza con cada abono y cada edición. Respeta el signo si quedó negativo.
+     */
+    function leerSaldoDeFila(fila) {
+        return parseInt(fila.querySelector('[data-celda="saldo"]').textContent.replace(/[^\d-]/g, '')) || 0;
+    }
+
+    /**
+     * Muestra u oculta los botones "Registrar abono" y "Pagar saldo total" según quede saldo.
+     */
+    function actualizarBotonesDePago(fila, saldo) {
+        fila.querySelector('button[data-btn="abono"]')?.classList.toggle('hidden', saldo <= 0);
+
+        const btnPagarTotal = fila.querySelector('button[data-btn="pagar-total"]');
+        if (btnPagarTotal) {
+            btnPagarTotal.classList.toggle('hidden', saldo <= 0);
+            btnPagarTotal.disabled = false;
+        }
+    }
+
+    /**
+     * Abre el modal de abono. Todo se lee de la fila en el momento del clic
+     * (id, nombre y saldo), así nunca queda desactualizado y ningún texto del
+     * usuario pasa por el onclick (un nombre como "D'Angelo" lo rompía).
+     */
+    function abrirModalAbono(boton) {
+    const fila  = boton.closest('tr');
+    const saldo = leerSaldoDeFila(fila);
+
+    document.getElementById('abono-reparacion-id').value        = fila.dataset.id;
+    document.getElementById('abono-cliente-nombre').textContent = fila.querySelector('[data-campo="nombre"]').textContent;
     document.getElementById('abono-saldo-display').textContent  = '$' + saldo.toLocaleString('es-CO');
     document.getElementById('abono-monto').value                = '';
     document.getElementById('abono-monto-visual').value         = '';
@@ -1469,8 +1522,8 @@ function actualizarFilaEdicion(datos) {
 }
 
     // Aplica un pago ya confirmado por el backend sobre la fila de la tabla:
-    // recalcula abonado/saldo, refresca el botón de abono y mantiene el data-edit
-    // al día para que el modal de detalle reabra con cifras correctas.
+    // recalcula abonado/saldo, muestra u oculta los botones de pago y mantiene
+    // el data-edit al día para que el modal de detalle reabra con cifras correctas.
     // Reutilizada por guardarAbono() (abono parcial) y pagarSaldoTotal() (pago total).
     function aplicarPagoEnFila(reparacionId, montoNum, nota) {
     const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
@@ -1488,20 +1541,9 @@ function actualizarFilaEdicion(datos) {
     celdaAbonado.textContent = '$' + nuevoAbonado.toLocaleString('es-CO');
     celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
 
-    // Actualizar el saldo en el botón de abono y ocultarlo si ya no queda saldo
-    const btnAbono = fila.querySelector('button[title="Registrar abono"]');
-    if (btnAbono) {
-        const nombreCliente = fila.querySelector('[data-celda="cliente"] p').textContent;
-        btnAbono.setAttribute('onclick', `abrirModalAbono(${reparacionId}, '${nombreCliente}', ${nuevoSaldo})`);
-        btnAbono.classList.toggle('hidden', nuevoSaldo <= 0);
-    }
-
-    // Mostrar/ocultar el botón de pago total según quede o no saldo
-    const btnPagarTotal = fila.querySelector('button[data-btn="pagar-total"]');
-    if (btnPagarTotal) {
-        btnPagarTotal.classList.toggle('hidden', nuevoSaldo <= 0);
-        btnPagarTotal.disabled = false;
-    }
+    // Ocultar Abono y Pagar total si ya no queda saldo. El modal de abono lee
+    // el saldo nuevo de la celda, así que no hace falta tocar su onclick.
+    actualizarBotonesDePago(fila, nuevoSaldo);
 
     // Mantener el data-edit fresco (abonos + saldo) para reaperturas del detalle
     try {
