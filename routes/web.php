@@ -67,6 +67,11 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::post('/reparaciones/{reparacion}/abono', [ReparacionController::class, 'registrarAbono'])
         ->name('reparaciones.registrarAbono');
 
+    // Enviar o reintentar el WhatsApp de "reparación lista" (throttle contra dobles clics)
+    Route::post('/reparaciones/{reparacion}/whatsapp', [ReparacionController::class, 'enviarWhatsapp'])
+        ->middleware('throttle:10,1')
+        ->name('reparaciones.enviarWhatsapp');
+
     // ── Edición de reparación ──
     // GET  → muestra el formulario con los datos actuales pre-llenados
     // PUT  → recibe el formulario y persiste los cambios

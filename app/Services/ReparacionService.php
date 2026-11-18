@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Enums\EstadoReparacion;
 use App\Models\Abono;
 use App\Models\Caja;
+use App\Models\Producto;
 use App\Models\Reparacion;
+use App\Models\ReparacionRepuesto;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -16,6 +19,16 @@ use Illuminate\Support\Facades\DB;
  */
 class ReparacionService
 {
+    /** Motivo del movimiento de stock cuando un display se usa en una reparación. */
+    public const MOTIVO_USO = 'Uso en reparación';
+
+    /** Motivo del movimiento de stock cuando un display vuelve al inventario. */
+    public const MOTIVO_DEVOLUCION = 'Devolución de reparación';
+
+    public function __construct(
+        private ProductoService $productoService
+    ) {}
+
     /**
      * Crea una nueva reparación.
      *
@@ -23,10 +36,13 @@ class ReparacionService
      * 1. Crea la reparación con los datos del cliente directo
      * 2. Ocupa la caja
      * 3. Registra el abono inicial si hay
+     * 4. Descuenta del inventario el display usado, si se indicó
+     *
+     * Si no hay stock suficiente del display, la transacción revierte todo.
      */
-    public function crear(array $datos): Reparacion
+    public function crear(array $datos, int $userId): Reparacion
     {
-        return DB::transaction(function () use ($datos) {
+        return DB::transaction(function () use ($datos, $userId) {
 
             // ── 0. Segunda línea de defensa contra condiciones de carrera ──
             //
@@ -53,6 +69,7 @@ class ReparacionService
             $reparacion = Reparacion::create([
                 'nombre_cliente'    => $datos['nombre_cliente'],
                 'telefono_cliente'  => $datos['telefono_cliente'] ?? null,
+                'tiene_whatsapp'    => $datos['tiene_whatsapp'] ?? true,
                 'caja_id'           => $datos['caja_id'],
                 'marca'             => $datos['marca'],
                 'modelo'            => $datos['modelo'] ?? null,
@@ -75,8 +92,140 @@ class ReparacionService
                 ]);
             }
 
+            // ── 4. Display usado (si se indicó) ──
+            if (! empty($datos['display_id'])) {
+                $repuesto = $this->sincronizarDisplay(
+                    $reparacion,
+                    (int) $datos['display_id'],
+                    (int) ($datos['display_cantidad'] ?? 1),
+                    $userId
+                );
+
+                $this->completarCostoRepuestos($reparacion, $repuesto, $datos);
+            }
+
             return $reparacion;
         });
+    }
+
+    /**
+     * Actualiza los datos editables de una reparación y, si vienen los campos
+     * del display, sincroniza el inventario. Todo en una sola transacción.
+     *
+     * Si la petición no trae 'display_id' (clientes con la página vieja abierta),
+     * el display y el inventario no se tocan.
+     */
+    public function actualizar(Reparacion $reparacion, array $datos, int $userId): Reparacion
+    {
+        return DB::transaction(function () use ($reparacion, $datos, $userId) {
+
+            $reparacion->update(Arr::except($datos, ['usa_display', 'display_id', 'display_cantidad']));
+
+            if (array_key_exists('display_id', $datos)) {
+                $repuesto = $this->sincronizarDisplay(
+                    $reparacion,
+                    $datos['display_id'] ? (int) $datos['display_id'] : null,
+                    (int) ($datos['display_cantidad'] ?? 1),
+                    $userId
+                );
+
+                $this->completarCostoRepuestos($reparacion, $repuesto, $datos);
+            }
+
+            return $reparacion->fresh(['repuestos.producto']);
+        });
+    }
+
+    /**
+     * Deja el display de la reparación como se pidió y ajusta el inventario
+     * solo por la diferencia, usando ProductoService::ajustarStock() (que bloquea
+     * la fila del producto y registra el MovimientoStock):
+     *
+     * - No tenía y ahora sí   → salida de $cantidad
+     * - Tenía y se quitó      → entrada (devolución) de lo que tenía
+     * - Mismo display         → salida o entrada solo por la diferencia de cantidad
+     * - Otro display          → devolución del anterior + salida del nuevo
+     *
+     * @return ReparacionRepuesto|null El display que quedó asignado (null si ninguno)
+     */
+    public function sincronizarDisplay(Reparacion $reparacion, ?int $productoId, int $cantidad, int $userId): ?ReparacionRepuesto
+    {
+        return DB::transaction(function () use ($reparacion, $productoId, $cantidad, $userId) {
+
+            $actual = $reparacion->repuestos()->with('producto')->first();
+            $nota   = "Reparación #{$reparacion->id} – {$reparacion->nombre_cliente}";
+
+            // Nada antes y nada ahora
+            if ($productoId === null && $actual === null) {
+                return null;
+            }
+
+            // Se quitó el display: vuelve completo al inventario
+            if ($productoId === null) {
+                $this->moverStock($actual->producto, 'entrada', $actual->cantidad, self::MOTIVO_DEVOLUCION, $nota, $userId);
+                $actual->delete();
+
+                return null;
+            }
+
+            // Mismo display: solo se mueve la diferencia de cantidad
+            if ($actual && $actual->producto_id === $productoId) {
+                $diferencia = $cantidad - $actual->cantidad;
+
+                if ($diferencia > 0) {
+                    $this->moverStock($actual->producto, 'salida', $diferencia, self::MOTIVO_USO, $nota, $userId);
+                } elseif ($diferencia < 0) {
+                    $this->moverStock($actual->producto, 'entrada', -$diferencia, self::MOTIVO_DEVOLUCION, $nota, $userId);
+                }
+
+                $actual->update(['cantidad' => $cantidad]);
+
+                return $actual;
+            }
+
+            // Otro display (o no tenía): devolver el anterior y descontar el nuevo
+            if ($actual) {
+                $this->moverStock($actual->producto, 'entrada', $actual->cantidad, self::MOTIVO_DEVOLUCION, $nota, $userId);
+            }
+
+            $producto = Producto::findOrFail($productoId);
+            $this->moverStock($producto, 'salida', $cantidad, self::MOTIVO_USO, $nota, $userId);
+
+            $datosRepuesto = [
+                'producto_id'    => $producto->id,
+                'cantidad'       => $cantidad,
+                'costo_unitario' => $producto->precio_compra,
+            ];
+
+            if ($actual) {
+                $actual->update($datosRepuesto);
+
+                return $actual->fresh('producto');
+            }
+
+            return $reparacion->repuestos()->create($datosRepuesto);
+        });
+    }
+
+    /**
+     * Si el usuario no escribió el costo de repuestos, se toma el del display
+     * (precio de compra × cantidad) para que la ganancia del dashboard sea real.
+     */
+    private function completarCostoRepuestos(Reparacion $reparacion, ?ReparacionRepuesto $repuesto, array $datos): void
+    {
+        if ($repuesto && ($datos['costo_repuestos'] ?? null) === null) {
+            $reparacion->update(['costo_repuestos' => $repuesto->costoTotal()]);
+        }
+    }
+
+    private function moverStock(Producto $producto, string $operacion, int $cantidad, string $motivo, string $nota, int $userId): void
+    {
+        $this->productoService->ajustarStock($producto, [
+            'operacion'  => $operacion,
+            'cantidad'   => $cantidad,
+            'nuevo_tipo' => $motivo,
+            'nota'       => $nota,
+        ], $userId);
     }
 
     /**

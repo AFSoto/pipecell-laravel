@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidaDisplayUsado;
 use App\Models\Caja;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -13,9 +14,24 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class StoreReparacionRequest extends FormRequest
 {
+    use ValidaDisplayUsado;
+
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Las casillas llegan como "0"/"1": se convierten a booleanos.
+     * "Tiene WhatsApp" viene marcada por defecto; si no llega, se asume que sí.
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'tiene_whatsapp' => $this->has('tiene_whatsapp') ? $this->boolean('tiene_whatsapp') : true,
+        ]);
+
+        $this->normalizarCamposDisplay();
     }
 
     public function rules(): array
@@ -24,6 +40,7 @@ class StoreReparacionRequest extends FormRequest
             // ── Cliente (directo) ──
             'nombre_cliente'    => ['required', 'string', 'max:100'],
             'telefono_cliente'  => ['nullable', 'string', 'max:20'],
+            'tiene_whatsapp'    => ['boolean'],
 
             // ── Reparación ──
             'caja_id' => [
@@ -68,6 +85,9 @@ class StoreReparacionRequest extends FormRequest
                     }
                 },
             ],
+
+            // ── Display usado (se descuenta del inventario) ──
+            ...$this->reglasDisplay(),
         ];
     }
 
@@ -81,6 +101,7 @@ class StoreReparacionRequest extends FormRequest
             'valor_total.required'    => 'El valor total es obligatorio.',
             'valor_total.numeric'     => 'El valor total debe ser un número.',
             'valor_total.min'         => 'El valor total no puede ser negativo.',
+            ...$this->mensajesDisplay(),
         ];
     }
 }

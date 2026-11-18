@@ -316,20 +316,27 @@
         $diasEnProceso >= 8  => 'hover:bg-amber-50/80 bg-amber-50/40',
         default              => 'hover:bg-gray-50/50',
     };
+    $display = $rep->repuestos->first();
 @endphp
 <tr class="transition reparacion-row {{ $filaClase }}"
 
     data-id="{{ $rep->id }}"
     data-estado="{{ $rep->estado->value }}"
+    data-whatsapp="{{ $rep->ultimoWhatsapp ? json_encode($rep->ultimoWhatsapp->paraVista()) : '' }}"
     data-edit="{{ json_encode([
     'id'                => $rep->id,
     'nombre_cliente'    => $rep->nombre_cliente,
     'telefono_cliente'  => $rep->telefono_cliente ?? '',
+    'tiene_whatsapp'    => $rep->tiene_whatsapp,
     'marca'             => $rep->marca,
     'modelo'            => $rep->modelo ?? '',
     'descripcion_falla' => $rep->descripcion_falla ?? '',
     'valor_total'       => (int) $rep->valor_total,
     'costo_repuestos'   => (int) $rep->costo_repuestos,
+    'display_id'        => $display?->producto_id,
+    'display_nombre'    => $display?->producto?->nombre,
+    'display_cantidad'  => $display?->cantidad ?? 1,
+    'display_costo'     => (int) ($display?->costo_unitario ?? 0),
     'abonos'            => $rep->abonos->map(fn($a) => [
         'monto'      => (int) $a->monto,
         'nota'       => $a->nota ?? '',
@@ -354,13 +361,20 @@
 </td>
 
                     <td class="py-3 px-4" data-celda="cliente">
-    <p class="font-medium text-gray-900">{{ $rep->nombre_cliente }}</p>
-    <p class="text-xs text-gray-400">{{ $rep->telefono_cliente ?? 'Sin teléfono' }}</p>
+    <p class="font-medium text-gray-900" data-campo="nombre">{{ $rep->nombre_cliente }}</p>
+    <p class="text-xs text-gray-400" data-campo="telefono">{{ $rep->telefono_cliente ?? 'Sin teléfono' }}</p>
+    {{-- Indicador del aviso por WhatsApp: lo pinta pintarWhatsapp() con data-whatsapp --}}
+    <div data-whatsapp></div>
 </td>
 
                     <td class="py-3 px-4" data-celda="equipo">
-    <p class="text-gray-700">{{ $rep->marca }}</p>
-    <p class="text-xs text-gray-400">{{ $rep->modelo ?? '—' }}</p>
+    <p class="text-gray-700" data-campo="marca">{{ $rep->marca }}</p>
+    <p class="text-xs text-gray-400" data-campo="modelo">{{ $rep->modelo ?? '—' }}</p>
+    @php $textoDisplay = $display ? "Display: {$display->producto->nombre} ×{$display->cantidad}" : ''; @endphp
+    <p data-campo="display" class="mt-1 {{ $display ? '' : 'hidden' }}">
+        <span class="inline-block max-w-50 truncate align-bottom text-[11px] font-medium px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700"
+              title="{{ $textoDisplay }}">{{ $textoDisplay }}</span>
+    </p>
 </td>
 
                     {{-- Descripción de la falla recortada a 20 caracteres; el texto completo va en el tooltip --}}
@@ -491,6 +505,13 @@
                         <input type="text" name="telefono_cliente" placeholder="310 123 4567"
                                value="{{ old('telefono_cliente') }}"
                                class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        {{-- Si no tiene WhatsApp, no se le envía el aviso de "reparación lista" --}}
+                        <input type="hidden" name="tiene_whatsapp" value="0">
+                        <label class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                            <input type="checkbox" name="tiene_whatsapp" value="1" {{ old('tiene_whatsapp', '1') ? 'checked' : '' }}
+                                   class="w-3.5 h-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500">
+                            Tiene WhatsApp
+                        </label>
                     </div>
                 </div>
             </div>
@@ -531,6 +552,9 @@
                 <textarea name="descripcion_falla" rows="2" placeholder="¿Qué le pasa al equipo?"
                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none">{{ old('descripcion_falla') }}</textarea>
             </div>
+
+            {{-- Display usado (se descuenta del inventario) --}}
+            @include('admin.reparaciones.partials.campo-display', ['prefijo' => 'nueva', 'conOld' => true])
 
             {{-- Valores --}}
             <div class="grid grid-cols-3 gap-3">
@@ -689,6 +713,11 @@
                         <label class="text-xs text-gray-500 mb-1 block">Teléfono</label>
                         <input type="text" id="edit-telefono_cliente" placeholder="310 123 4567"
                                class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        <label class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                            <input type="checkbox" id="edit-tiene_whatsapp"
+                                   class="w-3.5 h-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500">
+                            Tiene WhatsApp
+                        </label>
                     </div>
                 </div>
             </div>
@@ -714,6 +743,9 @@
                               class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none"></textarea>
                 </div>
             </div>
+
+            {{-- Display usado: al guardar se devuelve o descuenta stock según el cambio --}}
+            @include('admin.reparaciones.partials.campo-display', ['prefijo' => 'edit', 'conOld' => false])
 
             {{-- Valores --}}
             <div>
@@ -848,6 +880,11 @@ function abrirModalEditar(btn) {
     document.getElementById('edit-costo_repuestos_visual').value = datos.costo_repuestos
         ? datos.costo_repuestos.toLocaleString('es-CO') : '';
 
+    document.getElementById('edit-tiene_whatsapp').checked = datos.tiene_whatsapp !== false;
+
+    // ── Display usado ──
+    prepararDisplayEdicion(datos);
+
     // ── Abonos ──
     const lista  = document.getElementById('edit-abonos-lista');
     const vacio  = document.getElementById('edit-abonos-vacio');
@@ -961,11 +998,15 @@ function guardarEdicion() {
         _method:           'PUT',
         nombre_cliente:    nombre,
         telefono_cliente:  document.getElementById('edit-telefono_cliente').value.trim(),
+        tiene_whatsapp:    document.getElementById('edit-tiene_whatsapp').checked,
         marca:             marca,
         modelo:            document.getElementById('edit-modelo').value.trim(),
         descripcion_falla: document.getElementById('edit-descripcion_falla').value.trim(),
         valor_total:       valor,
         costo_repuestos:   document.getElementById('edit-costo_repuestos').value || null,
+        usa_display:       document.getElementById('edit-usa_display').checked,
+        display_id:        document.getElementById('edit-display_id').value || null,
+        display_cantidad:  parseInt(document.getElementById('edit-display_cantidad').value) || 1,
     };
 
     fetch(`/admin/reparaciones/${editReparacionId}`, {
@@ -984,8 +1025,9 @@ function guardarEdicion() {
         btn.textContent = 'Guardar cambios';
 
         if (data.success) {
-            cerrarModalEditar();
             actualizarFilaEdicion(data.data);
+            actualizarStocksDisplays(data.stocks);
+            cerrarModalEditar();
             mostrarNotificacion(data.message);
         } else {
             const errores = data.errors
@@ -1005,13 +1047,20 @@ function guardarEdicion() {
 function actualizarFilaEdicion(datos) {
     if (!editFila) return;
 
-    editFila.querySelector('[data-celda="cliente"]').innerHTML = `
-        <p class="font-medium text-gray-900">${datos.nombre_cliente}</p>
-        <p class="text-xs text-gray-400">${datos.telefono_cliente || 'Sin teléfono'}</p>`;
+    // textContent (no innerHTML): son datos escritos por el usuario
+    const celdaCliente = editFila.querySelector('[data-celda="cliente"]');
+    celdaCliente.querySelector('[data-campo="nombre"]').textContent   = datos.nombre_cliente;
+    celdaCliente.querySelector('[data-campo="telefono"]').textContent = datos.telefono_cliente || 'Sin teléfono';
 
-    editFila.querySelector('[data-celda="equipo"]').innerHTML = `
-        <p class="text-gray-700">${datos.marca}</p>
-        <p class="text-xs text-gray-400">${datos.modelo || '—'}</p>`;
+    const celdaEquipo = editFila.querySelector('[data-celda="equipo"]');
+    celdaEquipo.querySelector('[data-campo="marca"]').textContent  = datos.marca;
+    celdaEquipo.querySelector('[data-campo="modelo"]').textContent = datos.modelo || '—';
+
+    const etiquetaDisplay = celdaEquipo.querySelector('[data-campo="display"]');
+    const textoDisplay    = datos.display_id ? `Display: ${datos.display_nombre} ×${datos.display_cantidad}` : '';
+    etiquetaDisplay.querySelector('span').textContent = textoDisplay;
+    etiquetaDisplay.querySelector('span').title       = textoDisplay;
+    etiquetaDisplay.classList.toggle('hidden', !datos.display_id);
 
     // Mismo recorte que Str::limit(20) en Blade
     const descripcion = datos.descripcion_falla || '';
@@ -1072,6 +1121,14 @@ function actualizarFilaEdicion(datos) {
 
                 // Mostrar notificación flotante
                 mostrarNotificacion('Estado actualizado correctamente');
+
+                // Aviso por WhatsApp: solo viene al pasar de "En proceso" a "Arreglado".
+                // Si no vino, igual se repinta para mostrar u ocultar el botón "Enviar WhatsApp".
+                if (data.notificacion) {
+                    mostrarResultadoWhatsapp(fila, data.notificacion);
+                } else {
+                    pintarWhatsapp(fila);
+                }
 
                 // ── Animación de desaparición si hay filtro de estado activo ──
                 //
@@ -1167,38 +1224,220 @@ function actualizarFilaEdicion(datos) {
 
     /**
      * Muestra una notificación flotante que desaparece sola.
-     * Tipo: 'success' (verde) o 'error' (rojo)
+     * Tipo: 'success' (verde), 'warning' (ámbar) o 'error' (rojo)
+     *
+     * Todas van en un mismo contenedor: si salen dos seguidas
+     * (ej: "Estado actualizado" + "WhatsApp enviado") se apilan en vez de taparse.
      */
-    function mostrarNotificacion(mensaje, tipo = 'success') {
-        // Crear el elemento
+    function mostrarNotificacion(mensaje, tipo = 'success', duracion = 3000) {
+        const estilos = {
+            success: 'bg-green-50 border border-green-200 text-green-700',
+            warning: 'bg-amber-50 border border-amber-200 text-amber-700',
+            error:   'bg-red-50 border border-red-200 text-red-700',
+        };
+        const icono = tipo === 'success'
+            ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
+            : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>';
+
+        let contenedor = document.getElementById('contenedor-notificaciones');
+        if (!contenedor) {
+            contenedor = document.createElement('div');
+            contenedor.id = 'contenedor-notificaciones';
+            contenedor.className = 'fixed top-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none';
+            document.body.appendChild(contenedor);
+        }
+
         const noti = document.createElement('div');
-        noti.className = `fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-sm font-medium transition-all duration-300 transform translate-x-full ${
-            tipo === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-        }`;
+        noti.className = `max-w-sm flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-sm font-medium transition-all duration-300 transform translate-x-full ${estilos[tipo] || estilos.success}`;
+        noti.innerHTML = `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icono}</svg>`;
 
-        // Ícono + mensaje
-        noti.innerHTML = tipo === 'success'
-            ? `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-               </svg>${mensaje}`
-            : `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-               </svg>${mensaje}`;
+        // textContent: el mensaje puede traer datos del cliente o errores del servidor
+        const texto = document.createElement('span');
+        texto.textContent = mensaje;
+        noti.appendChild(texto);
 
-        document.body.appendChild(noti);
+        contenedor.appendChild(noti);
 
         // Animar entrada (deslizar desde la derecha)
         requestAnimationFrame(() => {
             noti.classList.remove('translate-x-full');
         });
 
-        // Desaparecer después de 3 segundos
+        // Desaparecer después de la duración indicada
         setTimeout(() => {
             noti.classList.add('translate-x-full');
             setTimeout(() => noti.remove(), 300);
-        }, 3000);
+        }, duracion);
+    }
+
+    // ══════════════════════════════════════
+    // AVISO POR WHATSAPP
+    // ══════════════════════════════════════
+    const ESTILOS_WHATSAPP = {
+        enviado: 'bg-green-50 text-green-700',
+        fallido: 'bg-red-50 text-red-600',
+        omitido: 'bg-gray-100 text-gray-500',
+    };
+
+    /**
+     * Pinta el indicador de WhatsApp de una fila a partir de data-whatsapp
+     * (último intento: enviado, fallido u omitido) y de data-estado.
+     * En "Arreglado" sin aviso exitoso agrega el botón para enviarlo o reintentarlo.
+     */
+    function pintarWhatsapp(fila) {
+        const contenedor = fila.querySelector('[data-whatsapp]');
+        if (!contenedor) return;
+
+        const aviso = fila.dataset.whatsapp ? JSON.parse(fila.dataset.whatsapp) : null;
+        contenedor.replaceChildren();
+
+        if (aviso) {
+            const chip = document.createElement('span');
+            chip.className = `inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-lg whitespace-nowrap ${ESTILOS_WHATSAPP[aviso.estado] || ESTILOS_WHATSAPP.omitido}`;
+            chip.textContent = aviso.etiqueta;
+            chip.title = aviso.mensaje;
+            contenedor.appendChild(chip);
+        }
+
+        if (fila.dataset.estado === 'arreglado' && (!aviso || aviso.estado !== 'enviado')) {
+            const boton = document.createElement('button');
+            boton.type = 'button';
+            boton.className = 'block mt-1 text-[11px] font-semibold text-green-600 hover:text-green-800 transition';
+            boton.textContent = aviso ? 'Reintentar WhatsApp' : 'Enviar WhatsApp';
+            boton.addEventListener('click', () => enviarWhatsapp(fila, boton));
+            contenedor.appendChild(boton);
+        }
+    }
+
+    /**
+     * Guarda el resultado del aviso en la fila, repinta el indicador
+     * y muestra la notificación flotante (dura más que las normales).
+     */
+    function mostrarResultadoWhatsapp(fila, aviso) {
+        fila.dataset.whatsapp = JSON.stringify(aviso);
+        pintarWhatsapp(fila);
+
+        const tipo = { enviado: 'success', omitido: 'warning', fallido: 'error' }[aviso.estado] || 'warning';
+        mostrarNotificacion(aviso.mensaje, tipo, 6000);
+    }
+
+    /**
+     * Botón "Enviar / Reintentar WhatsApp" de las filas en "Arreglado".
+     */
+    function enviarWhatsapp(fila, boton) {
+        boton.disabled = true;
+        boton.textContent = 'Enviando...';
+
+        fetch(`/admin/reparaciones/${fila.dataset.id}/whatsapp`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.notificacion) {
+                mostrarResultadoWhatsapp(fila, data.notificacion);
+            } else {
+                mostrarNotificacion(data.message || 'No se pudo enviar el WhatsApp', 'error');
+                pintarWhatsapp(fila);
+            }
+        })
+        .catch(() => {
+            mostrarNotificacion('Error de conexión', 'error');
+            pintarWhatsapp(fila);
+        });
+    }
+
+    // ══════════════════════════════════════
+    // DISPLAY USADO (modales crear / editar)
+    // ══════════════════════════════════════
+    const COSTO_REPUESTOS_IDS = {
+        nueva: { oculto: 'costo_repuestos',      visual: 'costo_repuestos_visual' },
+        edit:  { oculto: 'edit-costo_repuestos', visual: 'edit-costo_repuestos_visual' },
+    };
+
+    function toggleDisplay(prefijo) {
+        const marcado = document.getElementById(`${prefijo}-usa_display`).checked;
+        document.getElementById(`${prefijo}-seccion-display`).classList.toggle('hidden', !marcado);
+    }
+
+    /**
+     * Filtra las opciones del select de displays por el texto del buscador.
+     */
+    function filtrarDisplays(prefijo, texto) {
+        const busqueda = texto.trim().toLowerCase();
+        const select = document.getElementById(`${prefijo}-display_id`);
+
+        Array.from(select.options).forEach(opcion => {
+            if (!opcion.value) return; // "Seleccionar display..."
+            opcion.hidden = busqueda !== '' && !opcion.text.toLowerCase().includes(busqueda);
+        });
+    }
+
+    /**
+     * Pone en "Repuestos" el costo del display elegido (precio de compra × cantidad).
+     * El usuario lo puede cambiar después; el servidor solo lo calcula si queda vacío.
+     */
+    function calcularCostoDisplay(prefijo) {
+        const opcion = document.getElementById(`${prefijo}-display_id`).selectedOptions[0];
+        if (!opcion || !opcion.value) return;
+
+        const cantidad = Math.max(1, parseInt(document.getElementById(`${prefijo}-display_cantidad`).value) || 1);
+        const costo    = (parseInt(opcion.dataset.precio) || 0) * cantidad;
+        const ids      = COSTO_REPUESTOS_IDS[prefijo];
+
+        document.getElementById(ids.oculto).value = costo;
+        document.getElementById(ids.visual).value = costo ? costo.toLocaleString('es-CO') : '';
+    }
+
+    /**
+     * Carga en el modal de edición el display que tiene la reparación.
+     * Si ese display ya no está activo, se agrega como opción para poder mantenerlo,
+     * y se habilita aunque su stock esté en 0 (las unidades ya son de esta reparación).
+     */
+    function prepararDisplayEdicion(datos) {
+        const select = document.getElementById('edit-display_id');
+
+        // Restablecer el estado de las opciones según su stock
+        Array.from(select.options).forEach(opcion => {
+            if (opcion.value) opcion.disabled = (parseInt(opcion.dataset.stock) || 0) < 1;
+        });
+
+        if (datos.display_id) {
+            let opcion = select.querySelector(`option[value="${datos.display_id}"]`);
+            if (!opcion) {
+                opcion = new Option(`${datos.display_nombre} (inactivo)`, datos.display_id);
+                opcion.dataset.nombre = datos.display_nombre;
+                opcion.dataset.precio = datos.display_costo || 0;
+                opcion.dataset.stock  = 0;
+                select.add(opcion);
+            }
+            opcion.disabled = false;
+        }
+
+        document.getElementById('edit-usa_display').checked    = !!datos.display_id;
+        document.getElementById('edit-buscar-display').value   = '';
+        filtrarDisplays('edit', '');
+        select.value = datos.display_id ? String(datos.display_id) : '';
+        document.getElementById('edit-display_cantidad').value = datos.display_cantidad || 1;
+        toggleDisplay('edit');
+    }
+
+    /**
+     * Refresca el stock que muestran los selects de displays después de editar.
+     * stocks = { productoId: stockNuevo, ... }
+     */
+    function actualizarStocksDisplays(stocks) {
+        Object.entries(stocks || {}).forEach(([id, stock]) => {
+            document.querySelectorAll(`.select-display option[value="${id}"]`).forEach(opcion => {
+                opcion.dataset.stock = stock;
+                opcion.disabled      = stock < 1;
+                opcion.textContent   = `${opcion.dataset.nombre} — stock ${stock}`;
+            });
+        });
     }
 
     // ══════════════════════════════════════
@@ -1396,6 +1635,9 @@ function actualizarFilaEdicion(datos) {
             input.value = parseInt(valor).toLocaleString('es-CO');
         }
     }
+
+    // Pintar el indicador de WhatsApp de cada fila al cargar la página
+    document.querySelectorAll('tr.reparacion-row').forEach(pintarWhatsapp);
 
     // Abrir el modal correcto según el bag de errores de validación
     @if ($errors->getBag('default')->any())

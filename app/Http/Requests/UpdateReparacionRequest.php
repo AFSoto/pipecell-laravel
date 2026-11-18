@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidaDisplayUsado;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -15,6 +16,8 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class UpdateReparacionRequest extends FormRequest
 {
+    use ValidaDisplayUsado;
+
     /**
      * Todos los usuarios autenticados pueden editar reparaciones.
      * El middleware 'auth' en las rutas ya protege el acceso.
@@ -24,12 +27,28 @@ class UpdateReparacionRequest extends FormRequest
         return true;
     }
 
+    /**
+     * Los campos de WhatsApp y display solo se normalizan si vienen en la petición.
+     * Así, una página vieja abierta (sin esos campos) no borra el display por error.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('tiene_whatsapp')) {
+            $this->merge(['tiene_whatsapp' => $this->boolean('tiene_whatsapp')]);
+        }
+
+        if ($this->has('usa_display')) {
+            $this->normalizarCamposDisplay();
+        }
+    }
+
     public function rules(): array
     {
         return [
             // ── Datos del cliente ──
             'nombre_cliente'   => ['required', 'string', 'max:100'],
             'telefono_cliente' => ['nullable', 'string', 'max:20'],
+            'tiene_whatsapp'   => ['sometimes', 'boolean'],
 
             // ── Datos del equipo ──
             'marca'            => ['required', 'string', 'max:50'],
@@ -40,6 +59,9 @@ class UpdateReparacionRequest extends FormRequest
             // min:0 porque una reparación puede ser gratuita (garantía, favor)
             'valor_total'      => ['required', 'numeric', 'min:0'],
             'costo_repuestos'  => ['nullable', 'numeric', 'min:0'],
+
+            // ── Display usado (se sincroniza con el inventario) ──
+            ...$this->reglasDisplay($this->route('reparacion')),
         ];
     }
 
@@ -55,6 +77,7 @@ class UpdateReparacionRequest extends FormRequest
             'valor_total.min'          => 'El valor total no puede ser negativo.',
             'costo_repuestos.numeric'  => 'El costo de repuestos debe ser un número.',
             'costo_repuestos.min'      => 'El costo de repuestos no puede ser negativo.',
+            ...$this->mensajesDisplay(),
         ];
     }
 }

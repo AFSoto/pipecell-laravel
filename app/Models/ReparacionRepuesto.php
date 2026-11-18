@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * Repuesto del inventario usado en una reparación (hoy: el display).
+ *
+ * El stock no se toca desde aquí: lo maneja ReparacionService::sincronizarDisplay(),
+ * que usa ProductoService::ajustarStock() para dejar el movimiento registrado.
+ */
+class ReparacionRepuesto extends Model
+{
+    protected $table = 'reparacion_repuestos';
+
+    protected $fillable = [
+        'reparacion_id',
+        'producto_id',
+        'cantidad',
+        'costo_unitario',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'producto_id'    => 'integer',
+            'cantidad'       => 'integer',
+            'costo_unitario' => 'decimal:2',
+        ];
+    }
+
+    // ── Relaciones ──
+
+    public function reparacion(): BelongsTo
+    {
+        return $this->belongsTo(Reparacion::class);
+    }
+
+    public function producto(): BelongsTo
+    {
+        return $this->belongsTo(Producto::class);
+    }
+
+    // ── Helpers ──
+
+    /**
+     * Costo total de este repuesto: costo unitario × cantidad.
+     */
+    public function costoTotal(): float
+    {
+        return (float) $this->costo_unitario * $this->cantidad;
+    }
+}

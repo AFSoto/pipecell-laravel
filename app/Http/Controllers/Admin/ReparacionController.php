@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\EstadoReparacion;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReparacionRequest;
 use App\Http\Requests\UpdateReparacionRequest;
 use App\Models\Caja;
+use App\Models\Producto;
 use App\Models\Reparacion;
+use App\Services\NotificacionService;
 use App\Services\ReparacionService;
 use Illuminate\Http\Request;
 
@@ -19,7 +22,8 @@ use Illuminate\Http\Request;
 class ReparacionController extends Controller
 {
     public function __construct(
-        private ReparacionService $reparacionService
+        private ReparacionService $reparacionService,
+        private NotificacionService $notificacionService
     ) {}
 
     /**
@@ -51,7 +55,7 @@ class ReparacionController extends Controller
 
 
         // Construcción inicial de la consulta
-        $query = Reparacion::with(['caja', 'abonos'])
+        $query = Reparacion::with(['caja', 'abonos', 'repuestos.producto', 'ultimoWhatsapp'])
 
             // Filtra por estado si no es "todos"
             ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
@@ -162,12 +166,20 @@ class ReparacionController extends Controller
             ->orderBy('numero')
             ->get();
 
+        // Displays (pantallas activas) para el campo "¿Se usó display?"
+        // de los modales de crear y editar
+        $displays = Producto::activos()
+            ->pantallas()
+            ->orderBy('nombre')
+            ->get(['id', 'nombre', 'stock', 'precio_compra']);
+
         // Retorna la vista principal
         // junto con toda la información necesaria
         return view('admin.reparaciones.index', compact(
             'reparaciones',
             'cajasLibres',
-            'contadores'
+            'contadores',
+            'displays'
         ));
     }
 
@@ -182,7 +194,20 @@ class ReparacionController extends Controller
     public function update(UpdateReparacionRequest $request, Reparacion $reparacion)
     {
         try {
-            $reparacion->update($request->validated());
+            // Producto del display antes del cambio, para devolver su stock actualizado
+            $displayAnterior = $reparacion->repuestos()->value('producto_id');
+
+            $reparacion = $this->reparacionService->actualizar(
+                $reparacion,
+                $request->validated(),
+                $request->user()->id
+            );
+
+            $repuesto = $reparacion->repuestos->first();
+
+            // Stock nuevo de los displays afectados, para refrescar los selects sin recargar
+            $stocks = Producto::whereIn('id', array_filter([$displayAnterior, $repuesto?->producto_id]))
+                ->pluck('stock', 'id');
 
             return response()->json([
                 'success' => true,
@@ -191,12 +216,18 @@ class ReparacionController extends Controller
                     'id'                => $reparacion->id,
                     'nombre_cliente'    => $reparacion->nombre_cliente,
                     'telefono_cliente'  => $reparacion->telefono_cliente,
+                    'tiene_whatsapp'    => $reparacion->tiene_whatsapp,
                     'marca'             => $reparacion->marca,
                     'modelo'            => $reparacion->modelo,
                     'descripcion_falla' => $reparacion->descripcion_falla,
                     'valor_total'       => (int) $reparacion->valor_total,
                     'costo_repuestos'   => (int) $reparacion->costo_repuestos,
+                    'display_id'        => $repuesto?->producto_id,
+                    'display_nombre'    => $repuesto?->producto?->nombre,
+                    'display_cantidad'  => $repuesto?->cantidad ?? 1,
+                    'display_costo'     => (int) ($repuesto?->costo_unitario ?? 0),
                 ],
+                'stocks'  => $stocks,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -212,11 +243,19 @@ class ReparacionController extends Controller
     public function store(StoreReparacionRequest $request)
     {
         try {
-            $this->reparacionService->crear($request->validated());
+            $reparacion = $this->reparacionService->crear($request->validated(), $request->user()->id);
+
+            $mensaje  = 'Reparación registrada con éxito.';
+            $repuesto = $reparacion->repuestos()->with('producto')->first();
+
+            if ($repuesto) {
+                $unidades = $repuesto->cantidad === 1 ? '1 unidad' : "{$repuesto->cantidad} unidades";
+                $mensaje .= " Se descontó {$unidades} de «{$repuesto->producto->nombre}» del inventario.";
+            }
 
             return redirect()
                 ->route('admin.reparaciones.index')
-                ->with('success', 'Reparación registrada con éxito.');
+                ->with('success', $mensaje);
         } catch (\Exception $e) {
             return redirect()
                 ->route('admin.reparaciones.index')
@@ -233,21 +272,73 @@ class ReparacionController extends Controller
             'estado' => ['required', 'in:en_proceso,arreglado,entregado'],
         ]);
 
+        $estadoAnterior = $reparacion->estado;
+
         try {
-            $this->reparacionService->actualizarEstado(
+            $reparacion = $this->reparacionService->actualizarEstado(
                 $reparacion,
                 $request->estado
             );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Estado actualizado correctamente.',
-            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Error al actualizar: ' . $e->getMessage(),
             ], 500);
+        }
+
+        // El estado ya quedó guardado. El aviso solo sale cuando el equipo pasa
+        // de "En proceso" a "Arreglado" (no en correcciones como entregado → arreglado).
+        $notificacion = null;
+
+        if ($estadoAnterior === EstadoReparacion::EnProceso && $reparacion->estado === EstadoReparacion::Arreglado) {
+            $notificacion = $this->avisarReparacionLista($reparacion, $request->user()->id);
+        }
+
+        return response()->json([
+            'success'      => true,
+            'message'      => 'Estado actualizado correctamente.',
+            'notificacion' => $notificacion,
+        ]);
+    }
+
+    /**
+     * Envía (o reintenta) el WhatsApp de "reparación lista" desde el botón de la fila.
+     */
+    public function enviarWhatsapp(Request $request, Reparacion $reparacion)
+    {
+        if ($reparacion->estado !== EstadoReparacion::Arreglado) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo se puede avisar al cliente cuando la reparación está en "Arreglado".',
+            ], 422);
+        }
+
+        $notificacion = $this->avisarReparacionLista($reparacion, $request->user()->id, forzar: true);
+
+        return response()->json([
+            'success'      => true,
+            'notificacion' => $notificacion,
+        ]);
+    }
+
+    /**
+     * Envía el aviso y devuelve los datos para la vista. Nunca lanza excepción:
+     * un problema con WhatsApp no debe dañar el cambio de estado que ya se guardó.
+     */
+    private function avisarReparacionLista(Reparacion $reparacion, int $userId, bool $forzar = false): ?array
+    {
+        try {
+            return $this->notificacionService
+                ->notificarReparacionLista($reparacion, $userId, $forzar)
+                ?->paraVista();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [
+                'estado'   => 'fallido',
+                'etiqueta' => 'WhatsApp ✗ falló',
+                'mensaje'  => 'No se pudo enviar el WhatsApp por un error interno. Intenta de nuevo.',
+            ];
         }
     }
 

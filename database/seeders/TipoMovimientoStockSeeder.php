@@ -16,6 +16,10 @@ class TipoMovimientoStockSeeder extends Seeder
             'Ajuste de inventario',
             'Pérdida / daño',
             'Inventario inicial',
+            // Los usa ReparacionService al descontar o devolver el display de una reparación
+            // (también se crean solos con firstOrCreate si no existen)
+            'Uso en reparación',
+            'Devolución de reparación',
         ];
 
         foreach ($tipos as $nombre) {

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 /**
@@ -28,6 +29,7 @@ class Reparacion extends Model
     protected $fillable = [
         'nombre_cliente',
         'telefono_cliente',
+        'tiene_whatsapp',
         'tecnico_id',
         'caja_id',
         'marca',
@@ -43,6 +45,7 @@ class Reparacion extends Model
     {
         return [
             'estado' => EstadoReparacion::class,
+            'tiene_whatsapp' => 'boolean',
             'valor_total' => 'decimal:2',
             'costo_repuestos' => 'decimal:2',
             'fecha_entrega' => 'datetime',
@@ -74,6 +77,34 @@ class Reparacion extends Model
     public function abonos(): HasMany
     {
         return $this->hasMany(Abono::class);
+    }
+
+    /**
+     * Repuestos del inventario usados (hoy la interfaz maneja solo el display).
+     * Ejemplo: $reparacion->repuestos->first()?->producto->nombre
+     */
+    public function repuestos(): HasMany
+    {
+        return $this->hasMany(ReparacionRepuesto::class);
+    }
+
+    /**
+     * Historial de avisos al cliente (WhatsApp, y más adelante SMS).
+     */
+    public function notificaciones(): HasMany
+    {
+        return $this->hasMany(Notificacion::class);
+    }
+
+    /**
+     * El último intento de aviso por WhatsApp, para el indicador de la fila.
+     */
+    public function ultimoWhatsapp(): HasOne
+    {
+        return $this->hasOne(Notificacion::class)->ofMany(
+            ['id' => 'max'],
+            fn ($query) => $query->where('canal', Notificacion::CANAL_WHATSAPP)
+        );
     }
 
     // ── Accessors (campos calculados) ──

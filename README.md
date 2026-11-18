@@ -15,6 +15,8 @@ Sistema web completo para la administración de talleres de reparación de celul
 - Registro de abonos parciales con control de saldo pendiente
 - Bloqueo: no se puede marcar como entregada una reparación con saldo pendiente
 - Edición de datos desde modal inline
+- Registro del **display usado** al crear o editar: se descuenta del inventario (1 por defecto, cantidad editable), queda el movimiento de stock y su costo pasa a "Repuestos"
+- **Aviso automático por WhatsApp** al cliente cuando la reparación pasa a "Arreglado", con indicador en la fila (enviado / falló / no enviado) y botón para reintentar
 - Alertas visuales para reparaciones con más de 8 y 15 días en proceso
 - Filtros por estado, período (hoy / semana / mes / trimestre / año / personalizado) y búsqueda en tiempo real
 
@@ -143,9 +145,37 @@ MAIL_PORT=587
 MAIL_USERNAME=usuario@ejemplo.com
 MAIL_PASSWORD=
 MAIL_FROM_ADDRESS=noreply@ejemplo.com
+
+# Aviso por WhatsApp (opcional: si están vacías no se envía nada)
+WHATSAPP_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_API_VERSION=v26.0
+WHATSAPP_PLANTILLA_LISTA=reparacion_lista
+WHATSAPP_IDIOMA=es
 ```
 
 > El correo es necesario para la recuperación de contraseña.
+
+---
+
+## Aviso por WhatsApp (Meta Cloud API)
+
+Cuando una reparación pasa de **En proceso** a **Arreglado**, la plataforma envía al cliente una plantilla de WhatsApp y muestra el resultado en la fila. No se envía si el cliente no tiene teléfono, si está desmarcado "Tiene WhatsApp" o si el número no es un celular colombiano.
+
+**Costo:** desde el 1 de octubre de 2026 Meta cobra cada aviso de negocio (plantilla *Utility*), unos US$0,0008 por mensaje entregado en Colombia. Para desarrollar, Meta da un número de prueba gratis que envía a hasta 5 números verificados.
+
+**Configuración:**
+
+1. Crear un portafolio en [business.facebook.com](https://business.facebook.com) y una app tipo *Business* en [developers.facebook.com](https://developers.facebook.com) con el producto WhatsApp.
+2. Registrar el número que enviará los avisos y agregar un método de pago en WhatsApp Manager.
+3. Crear la plantilla `reparacion_lista` (categoría **Utility**, idioma español) y esperar la aprobación:
+
+   ```text
+   Hola {{1}}, tu {{2}} ya está listo para recoger en PipeCell. Saldo pendiente: {{3}}. ¡Te esperamos!
+   ```
+
+   `{{1}}` = nombre del cliente, `{{2}}` = marca y modelo, `{{3}}` = saldo pendiente (ej. `$50.000`).
+4. Crear un *System User* con un token permanente (permiso `whatsapp_business_messaging`) y poner el token y el *Phone Number ID* en el `.env`.
 
 ---
 
@@ -192,8 +222,9 @@ app/
 │   │   └── Auth/           # Login, PasswordReset
 │   └── Requests/           # Validaciones para cada recurso
 ├── Models/                 # Reparacion, Caja, Abono, User, Categoria, Producto,
-│                           # ProductoImagen, Venta, VentaItem
-└── Services/               # ReparacionService, CategoriaService, ProductoService
+│                           # ProductoImagen, Venta, VentaItem, ReparacionRepuesto, Notificacion
+└── Services/               # ReparacionService, CategoriaService, ProductoService,
+                            # NotificacionService, WhatsAppService
 
 database/
 ├── migrations/             # 10 migraciones
@@ -223,14 +254,19 @@ npm run build
 # 2. Dependencias sin dev
 composer install --no-dev --optimize-autoloader
 
-# 3. Optimizaciones Laravel
+# 3. Migraciones pendientes (cuando la versión trae migraciones nuevas)
+php artisan migrate --force
+
+# 4. Optimizaciones Laravel (vuelve a correrlas si cambiaste el .env)
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# 4. Enlace de almacenamiento
+# 5. Enlace de almacenamiento
 php artisan storage:link
 ```
+
+> Al subir archivos al servidor no reemplaces su `.env` ni la carpeta `storage/` (ahí están las fotos de productos subidas en producción).
 
 ### `.env` de producción
 
@@ -261,6 +297,8 @@ RewriteRule ^(.*)$ public/$1 [L]
 composer test                              # Limpia caché y corre PHPUnit
 php artisan test --filter=NombreTest       # Test específico
 ```
+
+Los tests usan SQLite en memoria y nunca llaman a Meta (`Http::fake()`). Requieren las dependencias de desarrollo (`composer install`); si después vas a subir `vendor/` al servidor, vuelve a correr `composer install --no-dev --optimize-autoloader`.
 
 ---
 
