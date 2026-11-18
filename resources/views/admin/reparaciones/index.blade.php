@@ -364,7 +364,7 @@
 </td>
 
                     {{-- Descripción de la falla recortada a 20 caracteres; el texto completo va en el tooltip --}}
-                    <td class="py-3 px-4 text-xs text-gray-500 whitespace-nowrap" data-celda="descripcion" title="{{ $rep->descripcion_falla }}">
+                    <td class="py-3 px-4 text-xs whitespace-nowrap {{ $rep->descripcion_falla ? 'text-purple-600 font-medium' : 'text-gray-400' }}" data-celda="descripcion" title="{{ $rep->descripcion_falla }}">
     {{ $rep->descripcion_falla ? Str::limit($rep->descripcion_falla, 20) : '—' }}
 </td>
 
@@ -1020,6 +1020,9 @@ function actualizarFilaEdicion(datos) {
         ? '—'
         : descripcion.length > 20 ? descripcion.slice(0, 20).trimEnd() + '...' : descripcion;
     celdaDescripcion.title = descripcion;
+    celdaDescripcion.classList.toggle('text-purple-600', !!descripcion);
+    celdaDescripcion.classList.toggle('font-medium', !!descripcion);
+    celdaDescripcion.classList.toggle('text-gray-400', !descripcion);
 
     editFila.querySelector('[data-celda="valor"]').textContent = '$' + datos.valor_total.toLocaleString('es-CO');
 
