@@ -179,4 +179,78 @@ class Reparacion extends Model
     {
         return filled($this->descripcion_falla) ? Str::limit($this->descripcion_falla, 20) : null;
     }
+
+    /**
+     * Campos que se editan en el modal "Editar reparación". Si otra persona cambia
+     * alguno mientras alguien tiene el modal abierto, guardar se rechaza (conflicto).
+     * El estado y los abonos no están: se manejan por separado y no se pisan.
+     */
+    public const CAMPOS_EDITABLES = [
+        'nombre_cliente', 'telefono_cliente', 'tiene_whatsapp', 'marca', 'modelo',
+        'descripcion_falla', 'valor_total', 'costo_repuestos', 'display_id', 'display_cantidad',
+    ];
+
+    /**
+     * Datos de la fila para el modal de edición (atributo data-edit).
+     * Necesita cargadas las relaciones repuestos.producto y abonos.
+     */
+    public function datosEdicion(): array
+    {
+        $display = $this->repuestos->first();
+
+        return [
+            'id'                => $this->id,
+            'nombre_cliente'    => $this->nombre_cliente,
+            'telefono_cliente'  => $this->telefono_cliente ?? '',
+            'tiene_whatsapp'    => (bool) $this->tiene_whatsapp,
+            'marca'             => $this->marca,
+            'modelo'            => $this->modelo ?? '',
+            'descripcion_falla' => $this->descripcion_falla ?? '',
+            'valor_total'       => (int) $this->valor_total,
+            'costo_repuestos'   => (int) $this->costo_repuestos,
+            'display_id'        => $display?->producto_id,
+            'display_nombre'    => $display?->producto?->nombre,
+            'display_cantidad'  => $display?->cantidad ?? 1,
+            'abonos'            => $this->abonos->map(fn ($abono) => [
+                'monto' => (int) $abono->monto,
+                'nota'  => $abono->nota ?? '',
+                'fecha' => $abono->created_at->format('d/m/Y h:i A'),
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Los campos editables como texto, para comparar dos versiones de la reparación
+     * (vacío y null cuentan igual; true/false pasan a "1"/"0"). Solo incluye los
+     * campos que vienen en $datos.
+     */
+    public static function huellaEdicion(array $datos): array
+    {
+        return collect(self::CAMPOS_EDITABLES)
+            ->filter(fn (string $campo) => array_key_exists($campo, $datos))
+            ->mapWithKeys(fn (string $campo) => [
+                $campo => is_bool($datos[$campo])
+                    ? ($datos[$campo] ? '1' : '0')
+                    : trim((string) ($datos[$campo] ?? '')),
+            ])
+            ->all();
+    }
+
+    /**
+     * Indica si alguno de los campos editables cambió respecto de cómo estaban
+     * cuando se abrió el modal ($original, tal como lo tenía la pantalla).
+     */
+    public function cambioDesde(array $original): bool
+    {
+        $abierto = self::huellaEdicion($original);
+        $actual  = self::huellaEdicion($this->datosEdicion());
+
+        foreach ($abierto as $campo => $valor) {
+            if ($valor !== $actual[$campo]) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

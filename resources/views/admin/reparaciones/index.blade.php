@@ -63,7 +63,7 @@
             </svg>
         </div>
         <div>
-            <p class="text-2xl font-bold text-gray-900">{{ $contadores['en_proceso'] }}</p>
+            <p class="text-2xl font-bold text-gray-900" data-contador="en_proceso">{{ $contadores['en_proceso'] }}</p>
             <p class="text-xs text-gray-500">En proceso</p>
         </div>
     </div>
@@ -74,7 +74,7 @@
             </svg>
         </div>
         <div>
-            <p class="text-2xl font-bold text-gray-900">{{ $contadores['arreglado'] }}</p>
+            <p class="text-2xl font-bold text-gray-900" data-contador="arreglado">{{ $contadores['arreglado'] }}</p>
             <p class="text-xs text-gray-500">Arreglados</p>
         </div>
     </div>
@@ -85,7 +85,7 @@
             </svg>
         </div>
         <div>
-            <p class="text-2xl font-bold text-gray-900">{{ $contadores['entregado'] }}</p>
+            <p class="text-2xl font-bold text-gray-900" data-contador="entregado">{{ $contadores['entregado'] }}</p>
             <p class="text-xs text-gray-500">Entregados</p>
         </div>
     </div>
@@ -307,143 +307,7 @@
             </thead>
             <tbody class="divide-y divide-gray-50">
                 @foreach($reparaciones as $rep)
-                @php
-    $diasEnProceso = $rep->estado->value === 'en_proceso'
-        ? (int) floor($rep->created_at->diffInDays(now()))
-        : null;
-    $filaClase = match(true) {
-        $diasEnProceso >= 15 => 'hover:bg-red-50/80 bg-red-50/40',
-        $diasEnProceso >= 8  => 'hover:bg-amber-50/80 bg-amber-50/40',
-        default              => 'hover:bg-gray-50/50',
-    };
-    $display = $rep->repuestos->first();
-@endphp
-<tr class="transition reparacion-row {{ $filaClase }}"
-
-    data-id="{{ $rep->id }}"
-    data-estado="{{ $rep->estado->value }}"
-    data-whatsapp="{{ $rep->ultimoWhatsapp ? json_encode($rep->ultimoWhatsapp->paraVista()) : '' }}"
-    data-edit="{{ json_encode([
-    'id'                => $rep->id,
-    'nombre_cliente'    => $rep->nombre_cliente,
-    'telefono_cliente'  => $rep->telefono_cliente ?? '',
-    'tiene_whatsapp'    => $rep->tiene_whatsapp,
-    'marca'             => $rep->marca,
-    'modelo'            => $rep->modelo ?? '',
-    'descripcion_falla' => $rep->descripcion_falla ?? '',
-    'valor_total'       => (int) $rep->valor_total,
-    'costo_repuestos'   => (int) $rep->costo_repuestos,
-    'display_id'        => $display?->producto_id,
-    'display_nombre'    => $display?->producto?->nombre,
-    'display_cantidad'  => $display?->cantidad ?? 1,
-    'abonos'            => $rep->abonos->map(fn($a) => [
-        'monto'      => (int) $a->monto,
-        'nota'       => $a->nota ?? '',
-        'fecha'      => $a->created_at->format('d/m/Y h:i A'),
-    ])->toArray(),
-]) }}">
-
-                    <td class="py-3 px-4 text-gray-400 text-xs">#{{ $rep->id }}</td>
-
-                    <td class="py-3 px-4 whitespace-nowrap">
-    <p class="text-gray-700 text-xs">{{ $rep->created_at->format('d/m/Y') }}</p>
-    <p class="text-gray-400 text-xs">{{ $rep->created_at->format('h:i A') }}</p>
-    @if($diasEnProceso >= 15)
-        <span class="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-lg bg-red-100 text-red-600">
-            {{ $diasEnProceso }} días
-        </span>
-    @elseif($diasEnProceso >= 8)
-        <span class="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-600">
-            {{ $diasEnProceso }} días
-        </span>
-    @endif
-</td>
-
-                    <td class="py-3 px-4" data-celda="cliente">
-    <p class="font-medium text-gray-900" data-campo="nombre">{{ $rep->nombre_cliente }}</p>
-    <p class="text-xs text-gray-400" data-campo="telefono">{{ $rep->telefono_cliente ?? 'Sin teléfono' }}</p>
-    {{-- Indicador del aviso por WhatsApp: lo pinta pintarWhatsapp() con data-whatsapp --}}
-    <div data-whatsapp></div>
-</td>
-
-                    <td class="py-3 px-4" data-celda="equipo">
-    <p class="text-gray-700" data-campo="marca">{{ $rep->marca }}</p>
-    <p class="text-xs text-gray-400" data-campo="modelo">{{ $rep->modelo ?? '—' }}</p>
-    @php $textoDisplay = $display ? "Display: {$display->producto->nombre} ×{$display->cantidad}" : ''; @endphp
-    <p data-campo="display" class="mt-1 {{ $display ? '' : 'hidden' }}">
-        <span class="inline-block max-w-50 truncate align-bottom text-[11px] font-medium px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700"
-              title="{{ $textoDisplay }}">{{ $textoDisplay }}</span>
-    </p>
-</td>
-
-                    {{-- Descripción de la falla recortada a 20 caracteres; el texto completo va en el tooltip --}}
-                    <td class="py-3 px-4 text-xs whitespace-nowrap {{ $rep->descripcion_falla ? 'text-purple-600 font-medium' : 'text-gray-400' }}" data-celda="descripcion" title="{{ $rep->descripcion_falla }}">
-    {{ $rep->descripcionCorta() ?? '—' }}
-</td>
-
-                    <td class="py-3 px-4">
-                        <span class="bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-lg">
-                            {{ $rep->caja->nombre_display }}
-                        </span>
-                    </td>
-
-                    <td class="py-3 px-4 font-medium text-gray-900" data-celda="valor">
-    ${{ number_format($rep->valor_total, 0, ',', '.') }}
-</td>
-                    <td class="py-3 px-4 text-gray-700" data-celda="abonado">
-    ${{ number_format($rep->total_abonado, 0, ',', '.') }}
-</td>
-
-                    <td class="py-3 px-4" data-celda="saldo">
-    @php $saldo = $rep->saldo_pendiente; @endphp
-                        <span class="{{ $saldo > 0 ? 'text-red-600' : 'text-green-600' }} font-medium">
-                            ${{ number_format($saldo, 0, ',', '.') }}
-                        </span>
-                    </td>
-
-                    <td class="py-3 px-4">
-                        <select onchange="cambiarEstado(this, {{ $rep->id }})"
-                                class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            @foreach(App\Enums\EstadoReparacion::cases() as $estado)
-                                <option value="{{ $estado->value }}" {{ $rep->estado === $estado ? 'selected' : '' }}>
-                                    {{ $estado->label() }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </td>
-
-                    <td class="py-3 px-4">
-                        <div class="flex items-center gap-2">
-                            {{-- Botón editar --}}
-                            <button onclick="abrirModalEditar(this)"
-        class="text-gray-400 hover:text-blue-600 transition"
-        title="Editar reparación">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                </svg>
-                            </button>
-                            {{-- Botón registrar abono (solo visible si hay saldo pendiente).
-                                 No lleva datos en el onclick: abrirModalAbono() los lee de la fila --}}
-                            <button onclick="abrirModalAbono(this)"
-                                    class="text-blue-600 hover:text-blue-800 transition {{ $rep->saldo_pendiente <= 0 ? 'hidden' : '' }}"
-                                    data-btn="abono"
-                                    title="Registrar abono">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            </button>
-                            {{-- Botón pagar saldo total (solo visible si hay saldo pendiente) --}}
-                            <button onclick="pagarSaldoTotal({{ $rep->id }})"
-                                    class="text-green-600 hover:text-green-800 transition {{ $rep->saldo_pendiente <= 0 ? 'hidden' : '' }}"
-                                    data-btn="pagar-total"
-                                    title="Pagar saldo total">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
+                    @include('admin.reparaciones.partials.fila')
                 @endforeach
             </tbody>
         </table>
@@ -536,7 +400,8 @@
             {{-- Caja --}}
             <div>
                 <label class="text-xs text-gray-500 mb-1 block">Caja *</label>
-                <select name="caja_id" required
+                {{-- La lista se pone al día sola cuando otra persona ocupa o libera una caja --}}
+                <select name="caja_id" required onchange="document.getElementById('aviso-caja-ocupada').classList.add('hidden')"
                         class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                     <option value="">Seleccionar caja...</option>
                     @foreach($cajasLibres as $caja)
@@ -545,6 +410,7 @@
                         </option>
                     @endforeach
                 </select>
+                <p id="aviso-caja-ocupada" role="status" class="hidden mt-1 text-xs font-medium text-amber-700"></p>
             </div>
 
             {{-- Falla --}}
@@ -696,6 +562,17 @@
         <div class="p-6 space-y-5">
 
             {{-- Errores --}}
+            {{-- Tiempo real: otra persona cambió esta reparación mientras el modal está abierto.
+                 No se tocan los campos que se están escribiendo; se ofrece cargar sus cambios. --}}
+            <div id="edit-aviso-cambio" role="status"
+                 class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-3">
+                <p id="edit-aviso-cambio-texto"></p>
+                <button type="button" onclick="cargarCambiosEdicion()"
+                        class="mt-2 px-3 py-1.5 text-xs font-semibold text-amber-800 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 transition">
+                    Cargar sus cambios
+                </button>
+            </div>
+
             <div id="edit-errores" class="hidden bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
                 <p class="font-semibold mb-1">Por favor corrige los siguientes errores:</p>
                 <ul id="edit-errores-lista" class="list-disc list-inside space-y-0.5"></ul>
@@ -799,14 +676,14 @@
 {{-- MODAL - Registrar Abono         --}}
 {{-- ============================== --}}
 <div id="modal-abono" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50" onclick="document.getElementById('modal-abono').classList.add('hidden')"></div>
+    <div class="absolute inset-0 bg-black/50" onclick="cerrarModalAbono()"></div>
     <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
                 <h3 class="text-lg font-semibold text-gray-900">Registrar abono</h3>
                 <p class="text-sm text-gray-500" id="abono-cliente-nombre"></p>
             </div>
-            <button onclick="document.getElementById('modal-abono').classList.add('hidden')"
+            <button onclick="cerrarModalAbono()"
                     class="p-2 rounded-xl hover:bg-gray-100 transition">
                 <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -818,6 +695,9 @@
             <div>
                 <label class="text-xs text-gray-500 mb-1 block">Saldo pendiente</label>
                 <p class="text-2xl font-bold text-red-600" id="abono-saldo-display"></p>
+                {{-- Tiempo real: otra persona cobró o cambió esta reparación con el modal abierto --}}
+                <p id="abono-aviso-cambio" role="status"
+                   class="hidden mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></p>
             </div>
             <div>
                 <label class="text-xs text-gray-500 mb-1 block">Monto a abonar *</label>
@@ -832,7 +712,7 @@
                        class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
             </div>
             <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="document.getElementById('modal-abono').classList.add('hidden')"
+                <button type="button" onclick="cerrarModalAbono()"
                         class="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition">
                     Cancelar
                 </button>
@@ -859,12 +739,25 @@
 let editReparacionId = null;
 let editFila = null;
 
+// Cómo estaba la reparación al abrir el modal. Se manda al guardar: si otra persona
+// cambió alguno de estos campos mientras tanto, el servidor no guarda (409).
+let datosAlAbrir = null;
+const CAMPOS_EDITABLES = @js(App\Models\Reparacion::CAMPOS_EDITABLES);
+
+// Encabezado X-Socket-ID para que el servidor no le reenvíe a esta pantalla sus
+// propios cambios en tiempo real (lo da resources/js/tiempo-real.js si hay Pusher)
+function cabecerasEnVivo() {
+    return window.cabecerasTiempoReal ? window.cabecerasTiempoReal() : {};
+}
+
 function abrirModalEditar(btn) {
     const fila  = btn.closest('tr');
     const datos = JSON.parse(fila.dataset.edit);
 
     editReparacionId = datos.id;
     editFila = fila;
+    datosAlAbrir = datos;
+    ocultarAvisoCambioEdicion();
 
     document.getElementById('edit-subtitulo').textContent = `Reparación #${datos.id}`;
     document.getElementById('edit-nombre_cliente').value    = datos.nombre_cliente;
@@ -964,6 +857,7 @@ function pagarSaldoTotal(reparacionId) {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': csrfToken,
                 'Accept': 'application/json',
+                ...cabecerasEnVivo(),
             },
             body: JSON.stringify({ monto: saldo, nota: 'Pago total del saldo' })
         })
@@ -985,9 +879,37 @@ function pagarSaldoTotal(reparacionId) {
 }
 
 function cerrarModalEditar() {
+    const fila = editFila;
+
     document.getElementById('modal-editar').classList.add('hidden');
+    ocultarAvisoCambioEdicion();
     editReparacionId = null;
     editFila = null;
+    datosAlAbrir = null;
+
+    // Si otra persona la cambió de estado mientras estaba abierta, ahora sí sale del filtro
+    if (fila) revisarSalidaDeFiltro(fila);
+}
+
+// Aviso arriba del modal de edición: otra persona cambió esta reparación
+function mostrarAvisoCambioEdicion(texto) {
+    document.getElementById('edit-aviso-cambio-texto').textContent = texto;
+    document.getElementById('edit-aviso-cambio').classList.remove('hidden');
+}
+
+function ocultarAvisoCambioEdicion() {
+    document.getElementById('edit-aviso-cambio').classList.add('hidden');
+}
+
+// "Cargar sus cambios": trae la fila actualizada del servidor y vuelve a llenar el modal.
+// Lo que se había escrito y no se guardó se pierde (es lo que pidió quien tocó el botón).
+async function cargarCambiosEdicion() {
+    if (!editReparacionId) return;
+
+    await sincronizarFilas([String(editReparacionId)]);
+
+    const boton = editFila?.querySelector('button[onclick="abrirModalEditar(this)"]');
+    if (boton) abrirModalEditar(boton);
 }
 
 function guardarEdicion() {
@@ -1017,6 +939,10 @@ function guardarEdicion() {
         usa_display:       document.getElementById('edit-usa_display').checked,
         display_id:        document.getElementById('edit-display_id').value || null,
         display_cantidad:  parseInt(document.getElementById('edit-display_cantidad').value) || 1,
+        // Cómo estaba al abrir el modal: el servidor rechaza si otra persona lo cambió
+        original:          datosAlAbrir
+            ? Object.fromEntries(CAMPOS_EDITABLES.map(campo => [campo, datosAlAbrir[campo]]))
+            : null,
     };
 
     fetch(`/admin/reparaciones/${editReparacionId}`, {
@@ -1026,6 +952,7 @@ function guardarEdicion() {
             'X-CSRF-TOKEN': csrfToken,
             'Accept': 'application/json',
             'X-HTTP-Method-Override': 'PUT',
+            ...cabecerasEnVivo(),
         },
         body: JSON.stringify(payload),
     })
@@ -1039,6 +966,10 @@ function guardarEdicion() {
             actualizarStocksDisplays(data.stocks);
             cerrarModalEditar();
             mostrarNotificacion(data.message);
+        } else if (data.conflicto) {
+            // Otra persona la cambió: no se guardó nada; se ofrece cargar sus cambios
+            mostrarAvisoCambioEdicion(data.message);
+            document.getElementById('edit-errores').classList.add('hidden');
         } else {
             const errores = data.errors
                 ? Object.values(data.errors).flat()
@@ -1128,6 +1059,7 @@ function actualizarFilaEdicion(datos) {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': csrfToken,
                 'Accept': 'application/json',
+                ...cabecerasEnVivo(),
             },
             body: JSON.stringify({ estado: nuevoEstado })
         })
@@ -1164,36 +1096,7 @@ function actualizarFilaEdicion(datos) {
                     && filtroActivo !== nuevoEstado;
 
                 if (debeDesaparecer) {
-                    // Fase 1 — fundido: opacity 0 en 300ms
-                    // Usamos style.transition + style.opacity para no depender de clases Tailwind
-                    // que podrían no tener la propiedad transition configurada en este elemento.
-                    fila.style.transition = 'opacity 0.3s ease';
-                    fila.style.opacity    = '0';
-
-                    // Fase 2 — colapso de altura: después de que termine el fundido (300ms)
-                    // colapsamos el alto de la fila para que las filas de abajo suban suavemente
-                    // en lugar de dejar un hueco vacío en la tabla.
-                    setTimeout(() => {
-                        // Guardamos el alto actual para poder animarlo desde ese valor hasta 0
-                        fila.style.height     = fila.offsetHeight + 'px';
-                        fila.style.overflow   = 'hidden';
-
-                        // Forzamos un reflow para que el navegador registre el height fijo
-                        // antes de cambiarlo; sin esto la transición no se dispara.
-                        fila.offsetHeight; // eslint-disable-line no-unused-expressions
-
-                        fila.style.transition = 'height 0.3s ease, padding 0.3s ease';
-                        fila.style.height     = '0';
-                        fila.style.paddingTop = '0';
-                        fila.style.paddingBottom = '0';
-                    }, 300);
-
-                    // Fase 3 — eliminación del DOM: cuando terminaron ambas animaciones (600ms)
-                    // removemos el nodo del DOM para que no ocupe espacio ni quede accesible.
-                    setTimeout(() => {
-                        fila.remove();
-                    }, 620); // 20ms de margen extra sobre los 600ms para evitar flashes
-
+                    desvanecerFila(fila);
                 } else {
                     // Sin filtro activo o el estado coincide con el filtro:
                     // solo quitamos el anillo de feedback visual después de 1 segundo
@@ -1219,25 +1122,51 @@ function actualizarFilaEdicion(datos) {
      * Resta 1 al estado anterior y suma 1 al nuevo.
      */
     function actualizarContadores(estadoAnterior, nuevoEstado) {
-        const mapa = {
-            'en_proceso': 0,
-            'arreglado': 1,
-            'entregado': 2,
-        };
+        const anterior = document.querySelector(`[data-contador="${estadoAnterior}"]`);
+        const nuevo    = document.querySelector(`[data-contador="${nuevoEstado}"]`);
 
-        const tarjetas = document.querySelectorAll('.grid.sm\\:grid-cols-3 .text-2xl');
+        if (anterior) anterior.textContent = Math.max(0, (parseInt(anterior.textContent) || 0) - 1);
+        if (nuevo)    nuevo.textContent    = (parseInt(nuevo.textContent) || 0) + 1;
+    }
 
-        // Restar 1 al contador anterior
-        if (mapa[estadoAnterior] !== undefined) {
-            const valorAnterior = parseInt(tarjetas[mapa[estadoAnterior]].textContent);
-            tarjetas[mapa[estadoAnterior]].textContent = Math.max(0, valorAnterior - 1);
-        }
+    /**
+     * Pone los números exactos que mandó el servidor (tiempo real o puesta al día).
+     * contadores = { en_proceso: 4, arreglado: 2, entregado: 31 }
+     */
+    function pintarContadores(contadores) {
+        Object.entries(contadores || {}).forEach(([estado, total]) => {
+            const tarjeta = document.querySelector(`[data-contador="${estado}"]`);
+            if (tarjeta) tarjeta.textContent = total;
+        });
+    }
 
-        // Sumar 1 al contador nuevo
-        if (mapa[nuevoEstado] !== undefined) {
-            const valorNuevo = parseInt(tarjetas[mapa[nuevoEstado]].textContent);
-            tarjetas[mapa[nuevoEstado]].textContent = valorNuevo + 1;
-        }
+    /**
+     * Saca una fila de la tabla con animación: se desvanece, colapsa su alto y se quita.
+     * Se usa con style (no clases de Tailwind) para no depender de que la transición
+     * esté configurada en el elemento.
+     */
+    function desvanecerFila(fila) {
+        // Fase 1 — fundido: opacity 0 en 300ms
+        fila.style.transition = 'opacity 0.3s ease';
+        fila.style.opacity    = '0';
+
+        // Fase 2 — colapso de altura, para que las filas de abajo suban suavemente
+        // en lugar de dejar un hueco vacío en la tabla
+        setTimeout(() => {
+            fila.style.height   = fila.offsetHeight + 'px';
+            fila.style.overflow = 'hidden';
+
+            // Reflow para que el navegador registre el alto fijo antes de cambiarlo
+            fila.offsetHeight; // eslint-disable-line no-unused-expressions
+
+            fila.style.transition    = 'height 0.3s ease, padding 0.3s ease';
+            fila.style.height        = '0';
+            fila.style.paddingTop    = '0';
+            fila.style.paddingBottom = '0';
+        }, 300);
+
+        // Fase 3 — quitarla del DOM cuando terminaron las dos animaciones
+        setTimeout(() => fila.remove(), 620);
     }
 
     /**
@@ -1246,8 +1175,12 @@ function actualizarFilaEdicion(datos) {
      *
      * Todas van en un mismo contenedor: si salen dos seguidas
      * (ej: "Estado actualizado" + "WhatsApp enviado") se apilan en vez de taparse.
+     *
+     * duracion 0 = se queda hasta que la cierren con la ×. Es para lo que pide hacer
+     * algo (ej: "No le llegó el WhatsApp... Llámalo").
+     * opciones.alTocar: qué hacer al tocar el aviso (ej: ir a la fila); después se cierra.
      */
-    function mostrarNotificacion(mensaje, tipo = 'success', duracion = 3000) {
+    function mostrarNotificacion(mensaje, tipo = 'success', duracion = 3000, opciones = {}) {
         const estilos = {
             success: 'bg-green-50 border border-green-200 text-green-700',
             warning: 'bg-amber-50 border border-amber-200 text-amber-700',
@@ -1274,6 +1207,38 @@ function actualizarFilaEdicion(datos) {
         texto.textContent = mensaje;
         noti.appendChild(texto);
 
+        const cerrar = () => {
+            noti.classList.add('translate-x-full');
+            setTimeout(() => noti.remove(), 300);
+        };
+
+        // Los avisos que se tocan o se cierran reciben clics (el contenedor no, para no
+        // tapar los botones de la página que quedan detrás)
+        if (opciones.alTocar || !duracion) {
+            noti.style.pointerEvents = 'auto';
+        }
+
+        if (opciones.alTocar) {
+            noti.style.cursor = 'pointer';
+            noti.addEventListener('click', evento => {
+                if (evento.target.closest('[data-cerrar]')) return;
+                opciones.alTocar();
+                cerrar();
+            });
+        }
+
+        if (!duracion) {
+            const boton = document.createElement('button');
+            boton.type = 'button';
+            boton.dataset.cerrar = '';
+            boton.textContent = '×';
+            boton.setAttribute('aria-label', 'Cerrar aviso');
+            boton.className = 'ml-1 px-1 text-lg leading-none opacity-60 hover:opacity-100';
+            boton.addEventListener('click', cerrar);
+            noti.appendChild(boton);
+        }
+
+        noti.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
         contenedor.appendChild(noti);
 
         // Animar entrada (deslizar desde la derecha)
@@ -1281,11 +1246,10 @@ function actualizarFilaEdicion(datos) {
             noti.classList.remove('translate-x-full');
         });
 
-        // Desaparecer después de la duración indicada
-        setTimeout(() => {
-            noti.classList.add('translate-x-full');
-            setTimeout(() => noti.remove(), 300);
-        }, duracion);
+        // Desaparecer después de la duración indicada (0 = hasta que lo cierren)
+        if (duracion) {
+            setTimeout(cerrar, duracion);
+        }
     }
 
     // ══════════════════════════════════════
@@ -1361,6 +1325,7 @@ function actualizarFilaEdicion(datos) {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': csrfToken,
                 'Accept': 'application/json',
+                ...cabecerasEnVivo(),
             },
         })
         .then(res => res.json())
@@ -1515,23 +1480,34 @@ function actualizarFilaEdicion(datos) {
     document.getElementById('abono-monto').value                = '';
     document.getElementById('abono-monto-visual').value         = '';
     document.getElementById('abono-nota').value                 = '';
+    document.getElementById('abono-aviso-cambio').classList.add('hidden');
 
-    const btn = document.querySelector('#modal-abono button[onclick="guardarAbono()"]');
-
-    if (saldo <= 0) {
-        btn.disabled = true;
-        btn.textContent = 'Reparación ya pagada';
-        btn.classList.add('opacity-50', 'cursor-not-allowed');
-        btn.classList.remove('hover:bg-blue-700');
-    } else {
-        btn.disabled = false;
-        btn.textContent = 'Registrar abono';
-        btn.classList.remove('opacity-50', 'cursor-not-allowed');
-        btn.classList.add('hover:bg-blue-700');
-    }
+    pintarBotonAbono(saldo);
 
     document.getElementById('modal-abono').classList.remove('hidden');
 }
+
+    // Botón "Registrar abono" del modal: deshabilitado si ya no queda saldo
+    function pintarBotonAbono(saldo) {
+        const btn = document.querySelector('#modal-abono button[onclick="guardarAbono()"]');
+
+        btn.disabled = saldo <= 0;
+        btn.textContent = saldo <= 0 ? 'Reparación ya pagada' : 'Registrar abono';
+        btn.classList.toggle('opacity-50', saldo <= 0);
+        btn.classList.toggle('cursor-not-allowed', saldo <= 0);
+        btn.classList.toggle('hover:bg-blue-700', saldo > 0);
+    }
+
+    function cerrarModalAbono() {
+        const id = document.getElementById('abono-reparacion-id').value;
+
+        document.getElementById('modal-abono').classList.add('hidden');
+        document.getElementById('abono-reparacion-id').value = '';
+
+        // Si otra persona la cambió de estado mientras estaba abierto, ahora sí sale del filtro
+        const fila = document.querySelector(`tr[data-id="${id}"]`);
+        if (fila) revisarSalidaDeFiltro(fila);
+    }
 
     // Aplica un pago ya confirmado por el backend sobre la fila de la tabla:
     // recalcula abonado/saldo, muestra u oculta los botones de pago y mantiene
@@ -1588,13 +1564,14 @@ function actualizarFilaEdicion(datos) {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': csrfToken,
             'Accept': 'application/json',
+            ...cabecerasEnVivo(),
         },
         body: JSON.stringify({ monto, nota })
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            document.getElementById('modal-abono').classList.add('hidden');
+            cerrarModalAbono();
             aplicarPagoEnFila(reparacionId, monto, nota);
             mostrarNotificacion('Abono registrado correctamente');
         } else {
@@ -1686,6 +1663,244 @@ function actualizarFilaEdicion(datos) {
         // Formatear con puntos de miles para mostrar al usuario
         if (valor) {
             input.value = parseInt(valor).toLocaleString('es-CO');
+        }
+    }
+
+    // ══════════════════════════════════════
+    // TIEMPO REAL (Pusher) — la conexión está en resources/js/tiempo-real.js
+    // ══════════════════════════════════════
+    // Los avisos de Pusher solo dicen qué reparación cambió: por privacidad no llevan
+    // datos del cliente. La fila, los contadores y las cajas libres se piden a
+    // /admin/reparaciones/sincronizar, que usa la misma plantilla de la carga normal.
+    // Reglas: nada se mueve solo bajo el dedo, no se toca lo que alguien está
+    // escribiendo y los avisos flotantes solo salen cuando hay algo que hacer.
+
+    const avisosPendientes = new Map();   // id → avisos que llegaron casi juntos
+    let temporizadorAvisos = null;
+
+    // Un cambio de estado trae dos avisos seguidos (estado + WhatsApp): se espera un
+    // momento para pedir la fila una sola vez
+    window.addEventListener('tiempo-real:reparacion', ({ detail }) => {
+        if (!detail || !detail.id) return;
+
+        const id = String(detail.id);
+        avisosPendientes.set(id, [...(avisosPendientes.get(id) || []), detail]);
+
+        clearTimeout(temporizadorAvisos);
+        temporizadorAvisos = setTimeout(() => {
+            const avisos = new Map(avisosPendientes);
+            avisosPendientes.clear();
+            sincronizarFilas([...avisos.keys()], avisos);
+        }, 300);
+    });
+
+    // Se creó una caja nueva: solo hace falta la lista de cajas libres
+    window.addEventListener('tiempo-real:cajas', () => sincronizarFilas([]));
+
+    // Reconexión, o la tablet volvió del reposo: se pudieron perder avisos. Se pone al
+    // día todo lo visible, sin avisos flotantes (son cambios de hace rato).
+    window.addEventListener('tiempo-real:ponerse-al-dia', () => {
+        sincronizarFilas(Array.from(document.querySelectorAll('tr.reparacion-row'), fila => fila.dataset.id));
+    });
+
+    /**
+     * Pide al servidor cómo están ahora esas filas (más contadores y cajas libres) y lo aplica.
+     * avisos: Map id → avisos de Pusher que lo causaron (vacío al ponerse al día).
+     */
+    async function sincronizarFilas(ids, avisos = new Map()) {
+        try {
+            const respuesta = await fetch(`/admin/reparaciones/sincronizar?ids=${encodeURIComponent(ids.join(','))}`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            if (!respuesta.ok) return;
+
+            const data = await respuesta.json();
+
+            Object.entries(data.filas || {}).forEach(([id, html]) => {
+                if (html) aplicarFilaRemota(id, html, avisos.get(id) || []);
+            });
+            pintarContadores(data.contadores);
+            aplicarCajasLibres(data.cajas_libres);
+        } catch (error) {
+            // Sin conexión: la pantalla se pone al día sola al reconectar
+        }
+    }
+
+    /** Convierte el HTML de una fila que mandó el servidor en un elemento <tr>. */
+    function crearFila(html) {
+        const plantilla = document.createElement('template');
+        plantilla.innerHTML = html.trim();
+        return plantilla.content.querySelector('tr');
+    }
+
+    function modalEditarAbiertoPara(id) {
+        return String(editReparacionId) === String(id)
+            && !document.getElementById('modal-editar').classList.contains('hidden');
+    }
+
+    function modalAbonoAbiertoPara(id) {
+        return document.getElementById('abono-reparacion-id').value === String(id)
+            && !document.getElementById('modal-abono').classList.contains('hidden');
+    }
+
+    /**
+     * Aplica la versión nueva de una fila: la reemplaza, la resalta, pone al día los
+     * modales abiertos y la saca del filtro si ya no corresponde. Si la fila no está
+     * en esta página, solo salen los avisos flotantes.
+     */
+    function aplicarFilaRemota(id, html, avisos) {
+        const nueva = crearFila(html);
+        if (!nueva) return;
+
+        const datos  = JSON.parse(nueva.dataset.edit);
+        const autor  = avisos.map(aviso => aviso.autor).filter(Boolean).pop() || null;
+        const actual = document.querySelector(`tr[data-id="${id}"]`);
+
+        mostrarAvisosDeOtros(avisos, nueva, datos, Boolean(actual));
+
+        if (!actual) return;
+
+        // Alguien está usando esa fila (por ejemplo, el selector de estado abierto en la
+        // tablet): se espera a que termine y se vuelve a pedir
+        if (actual.contains(document.activeElement)) {
+            actual.addEventListener('focusout', () => setTimeout(() => sincronizarFilas([id]), 0), { once: true });
+            return;
+        }
+
+        actual.replaceWith(nueva);
+        pintarWhatsapp(nueva);
+        if (editFila === actual) editFila = nueva;
+
+        if (avisos.length) resaltarFila(nueva, autor);
+        ponerAlDiaModalesAbiertos(id, nueva, datos, avisos, autor);
+        revisarSalidaDeFiltro(nueva);
+    }
+
+    /** Fondo amarillo suave por 2 s y, al pasar el cursor, quién hizo el cambio. */
+    function resaltarFila(fila, autor = null) {
+        if (autor) fila.title = `Último cambio: ${autor}`;
+
+        fila.style.transition      = 'background-color 0.6s ease';
+        fila.style.backgroundColor = '#fef9c3';
+        setTimeout(() => { fila.style.backgroundColor = ''; }, 2000);
+    }
+
+    /**
+     * Avisos flotantes por cambios de otras personas. Solo dos, porque piden hacer algo:
+     * una reparación quedó lista, o el WhatsApp al cliente no llegó (este se queda).
+     */
+    function mostrarAvisosDeOtros(avisos, fila, datos, estaEnPagina) {
+        const equipo   = [datos.marca, datos.modelo].filter(Boolean).join(' ');
+        const opciones = estaEnPagina ? { alTocar: () => irAFila(datos.id) } : {};
+
+        avisos
+            .filter(aviso => aviso.accion === 'estado' && aviso.estado === 'arreglado')
+            .forEach(aviso => mostrarNotificacion(
+                `Lista: ${equipo} de ${datos.nombre_cliente}${aviso.autor ? ` · por ${aviso.autor}` : ''}`,
+                'success', 6000, opciones
+            ));
+
+        const whatsapp = fila.dataset.whatsapp ? JSON.parse(fila.dataset.whatsapp) : null;
+        const noLlego  = avisos.some(aviso => aviso.accion === 'whatsapp')
+            && whatsapp?.estado === 'fallido'
+            && fila.dataset.estado === 'arreglado';
+
+        if (noLlego) {
+            const telefono = datos.telefono_cliente ? ` (${datos.telefono_cliente})` : '';
+            mostrarNotificacion(
+                `No le llegó el WhatsApp a ${datos.nombre_cliente}${telefono}. Llámalo. Motivo: ${whatsapp.motivo || 'desconocido'}`,
+                'error', 0, opciones
+            );
+        }
+    }
+
+    function irAFila(id) {
+        const fila = document.querySelector(`tr[data-id="${id}"]`);
+        if (!fila) return;
+
+        fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        resaltarFila(fila);
+    }
+
+    /** Los campos editables como texto, igual que Reparacion::huellaEdicion() en PHP. */
+    function huellaEdicion(datos) {
+        return CAMPOS_EDITABLES.map(campo => {
+            const valor = datos?.[campo];
+            return typeof valor === 'boolean' ? (valor ? '1' : '0') : String(valor ?? '').trim();
+        }).join('|');
+    }
+
+    /**
+     * Modales abiertos sobre esa reparación:
+     * - Editar: no se tocan los campos que se están escribiendo. Si otra persona cambió
+     *   alguno de los campos editables, se avisa y se ofrece cargar sus cambios (si se
+     *   guarda sin cargarlos, el servidor lo rechaza igual).
+     * - Abono: el saldo se pone al día y se dice por qué cambió.
+     */
+    function ponerAlDiaModalesAbiertos(id, fila, datos, avisos, autor) {
+        const quien = autor || 'Otra persona';
+
+        if (modalEditarAbiertoPara(id) && datosAlAbrir && huellaEdicion(datosAlAbrir) !== huellaEdicion(datos)) {
+            mostrarAvisoCambioEdicion(`${quien} acaba de cambiar esta reparación.`);
+        }
+
+        if (modalAbonoAbiertoPara(id)) {
+            const saldo   = leerSaldoDeFila(fila);
+            const visible = document.getElementById('abono-saldo-display');
+            const nuevo   = '$' + saldo.toLocaleString('es-CO');
+
+            if (visible.textContent !== nuevo) {
+                const aviso = document.getElementById('abono-aviso-cambio');
+                aviso.textContent = avisos.some(a => a.accion === 'abono')
+                    ? `${quien} registró un abono. Saldo ahora: ${nuevo}.`
+                    : `${quien} cambió esta reparación. Saldo ahora: ${nuevo}.`;
+                aviso.classList.remove('hidden');
+
+                visible.textContent = nuevo;
+                pintarBotonAbono(saldo);
+            }
+        }
+    }
+
+    /**
+     * Si la fila ya no corresponde al filtro que se está viendo (ej: se ve "En proceso"
+     * y otra persona la pasó a "Arreglado"), se va despacio a los 3 s. Si tiene un modal
+     * abierto, se queda hasta que lo cierren (cerrarModalEditar / cerrarModalAbono).
+     */
+    function revisarSalidaDeFiltro(fila) {
+        const filtro = document.getElementById('select-estado')?.value
+            || new URLSearchParams(window.location.search).get('estado');
+
+        if (!filtro || filtro === 'todos' || fila.dataset.estado === filtro) return;
+
+        setTimeout(() => {
+            const actual = document.querySelector(`tr[data-id="${fila.dataset.id}"]`);
+            if (!actual || actual.dataset.estado === filtro) return;
+            if (modalEditarAbiertoPara(actual.dataset.id) || modalAbonoAbiertoPara(actual.dataset.id)) return;
+
+            desvanecerFila(actual);
+        }, 3000);
+    }
+
+    /**
+     * Pone al día las cajas del formulario de nueva reparación. Si la caja elegida se
+     * acaba de ocupar, se quita la selección y se avisa debajo del campo, antes de guardar.
+     */
+    function aplicarCajasLibres(libres) {
+        const select = document.querySelector('#modal-nueva select[name="caja_id"]');
+        if (!select || !Array.isArray(libres)) return;
+
+        const elegida       = select.value;
+        const nombreElegida = select.selectedOptions[0]?.textContent.trim();
+        const sigueLibre    = libres.some(caja => String(caja.id) === elegida);
+
+        select.replaceChildren(select.options[0], ...libres.map(caja => new Option(caja.nombre, caja.id)));
+        select.value = sigueLibre ? elegida : '';
+
+        if (elegida && !sigueLibre) {
+            const aviso = document.getElementById('aviso-caja-ocupada');
+            aviso.textContent = `La caja ${nombreElegida} se acaba de ocupar. Elige otra.`;
+            aviso.classList.remove('hidden');
         }
     }
 

@@ -110,6 +110,8 @@ class Notificacion extends Model
         return [
             'estado'   => $this->estado->value,
             'entrega'  => $this->estadoDeEntrega(),
+            // Por qué falló o no se envió (null en los enviados)
+            'motivo'   => $this->estado === EstadoNotificacion::Enviado ? null : $this->detalle,
             'etiqueta' => match ($this->estado) {
                 EstadoNotificacion::Enviado => match ($this->estadoDeEntrega()) {
                     'leido'     => "{$canal} ✓✓ leído",

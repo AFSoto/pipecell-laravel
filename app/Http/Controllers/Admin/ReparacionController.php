@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\EstadoReparacion;
+use App\Exceptions\ConflictoEdicionException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReparacionRequest;
 use App\Http\Requests\UpdateReparacionRequest;
@@ -13,7 +14,10 @@ use App\Models\Reparacion;
 use App\Services\NotificacionService;
 use App\Services\ReparacionService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 /**
  * Controlador de Reparaciones.
@@ -23,6 +27,9 @@ use Illuminate\Http\Request;
  */
 class ReparacionController extends Controller
 {
+    /** Relaciones que usa cada fila de la tabla (parcial reparaciones/partials/fila). */
+    private const RELACIONES_FILA = ['caja', 'abonos', 'repuestos.producto', 'ultimoWhatsapp'];
+
     public function __construct(
         private ReparacionService $reparacionService,
         private NotificacionService $notificacionService
@@ -57,7 +64,7 @@ class ReparacionController extends Controller
 
 
         // Construcción inicial de la consulta
-        $query = Reparacion::with(['caja', 'abonos', 'repuestos.producto', 'ultimoWhatsapp'])
+        $query = Reparacion::with(self::RELACIONES_FILA)
 
             // Filtra por estado si no es "todos"
             ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
@@ -149,24 +156,10 @@ class ReparacionController extends Controller
             : $query->paginate(10);
 
         // Contadores para mostrar estadísticas
-        $contadores = [
+        $contadores = $this->contadores();
 
-            // Cantidad en proceso
-            'en_proceso' => Reparacion::where('estado', 'en_proceso')->count(),
-
-            // Cantidad arreglada
-            'arreglado'  => Reparacion::where('estado', 'arreglado')->count(),
-
-            // Cantidad entregada
-            'entregado'  => Reparacion::where('estado', 'entregado')->count(),
-        ];
-
-        // Obtiene cajas disponibles ordenadas
-        // por grupo y número
-        $cajasLibres = Caja::libres()
-            ->orderBy('grupo')
-            ->orderBy('numero')
-            ->get();
+        // Cajas disponibles para el formulario de nueva reparación
+        $cajasLibres = $this->cajasLibres();
 
         // Displays (pantallas activas) para el campo "¿Se usó display?"
         // de los modales de crear y editar
@@ -197,8 +190,11 @@ class ReparacionController extends Controller
         try {
             $reparacion = $this->reparacionService->actualizar(
                 $reparacion,
-                $request->validated(),
-                $request->user()->id
+                Arr::except($request->validated(), ['original']),
+                $request->user()->id,
+                // Cómo estaba la reparación cuando se abrió el modal: si otra persona
+                // cambió alguno de esos campos, no se guarda (se responde 409)
+                $request->validated('original')
             );
 
             $repuesto = $reparacion->repuestos->first();
@@ -226,6 +222,12 @@ class ReparacionController extends Controller
                 // recargar (incluye cambios que hicieron otras personas o las ventas)
                 'stocks'  => $this->consultaDisplays()->pluck('stock', 'id'),
             ]);
+        } catch (ConflictoEdicionException $e) {
+            return response()->json([
+                'success'   => false,
+                'conflicto' => true,
+                'message'   => $e->getMessage(),
+            ], 409);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -330,6 +332,75 @@ class ReparacionController extends Controller
     private function estadoWhatsapp(Reparacion $reparacion): ?array
     {
         return $reparacion->ultimoWhatsapp()->first()?->paraVista();
+    }
+
+    /**
+     * Estado actual de algunas filas, para el tiempo real. La pantalla lo pide cuando
+     * llega un aviso de Pusher o cuando vuelve después de estar sin conexión (por
+     * ejemplo, la tablet en reposo).
+     *
+     * Devuelve el HTML de cada fila con la misma plantilla de la carga normal, los
+     * contadores por estado y las cajas libres del formulario de nueva reparación.
+     * Una fila que no existe vuelve como null.
+     *
+     * GET /admin/reparaciones/sincronizar?ids=12,15 (máximo 50)
+     */
+    public function sincronizar(Request $request): JsonResponse
+    {
+        $ids = collect(explode(',', (string) $request->query('ids', '')))
+            ->map(fn ($id) => trim($id))
+            ->filter(fn ($id) => ctype_digit($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->take(50)
+            ->values();
+
+        $reparaciones = Reparacion::with(self::RELACIONES_FILA)
+            ->whereIn('id', $ids)
+            ->get()
+            ->keyBy('id');
+
+        $filas = [];
+
+        foreach ($ids as $id) {
+            $filas[(string) $id] = isset($reparaciones[$id])
+                ? view('admin.reparaciones.partials.fila', ['rep' => $reparaciones[$id]])->render()
+                : null;
+        }
+
+        return response()->json([
+            'filas'        => (object) $filas,
+            'contadores'   => $this->contadores(),
+            'cajas_libres' => $this->cajasLibres()
+                ->map(fn (Caja $caja) => ['id' => $caja->id, 'nombre' => $caja->nombre_display])
+                ->values(),
+        ]);
+    }
+
+    /**
+     * Cantidad de reparaciones por estado (tarjetas de arriba de la lista).
+     */
+    private function contadores(): array
+    {
+        $totales = Reparacion::query()
+            ->selectRaw('estado, COUNT(*) as total')
+            ->groupBy('estado')
+            ->pluck('total', 'estado');
+
+        return collect(EstadoReparacion::cases())
+            ->mapWithKeys(fn (EstadoReparacion $estado) => [$estado->value => (int) ($totales[$estado->value] ?? 0)])
+            ->all();
+    }
+
+    /**
+     * Cajas sin reparación activa, ordenadas por grupo y número.
+     */
+    private function cajasLibres(): Collection
+    {
+        return Caja::libres()
+            ->orderBy('grupo')
+            ->orderBy('numero')
+            ->get();
     }
 
     /**

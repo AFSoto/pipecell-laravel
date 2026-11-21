@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use App\Enums\EstadoReparacion;
+use App\Events\ReparacionCambio;
+use App\Exceptions\ConflictoEdicionException;
 use App\Models\Abono;
 use App\Models\Caja;
 use App\Models\Producto;
 use App\Models\Reparacion;
 use App\Models\ReparacionRepuesto;
+use App\Support\TiempoReal;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -106,6 +109,9 @@ class ReparacionService
                 ));
             }
 
+            // Las otras pantallas actualizan contadores y cajas libres (se envía al confirmar)
+            TiempoReal::avisar(new ReparacionCambio($reparacion->id, ReparacionCambio::CREADA));
+
             // Queda cargado para que el controlador no lo vuelva a consultar
             return $reparacion->setRelation('repuestos', $repuestos);
         });
@@ -120,15 +126,27 @@ class ReparacionService
      *
      * Si MySQL detecta un bloqueo cruzado con otra transacción, la reintenta
      * hasta 3 veces antes de fallar.
+     *
+     * @param  array|null  $original  Los datos con que se abrió el modal (data-edit). Si
+     *                                otra persona cambió alguno de esos campos desde
+     *                                entonces, no se guarda nada. null = no se revisa
+     *                                (páginas abiertas antes de esta versión).
+     *
+     * @throws ConflictoEdicionException
      */
-    public function actualizar(Reparacion $reparacion, array $datos, int $userId): Reparacion
+    public function actualizar(Reparacion $reparacion, array $datos, int $userId, ?array $original = null): Reparacion
     {
-        return DB::transaction(function () use ($reparacion, $datos, $userId) {
+        return DB::transaction(function () use ($reparacion, $datos, $userId, $original) {
 
             // Releer con bloqueo: si dos personas guardan la misma reparación a la vez,
             // la segunda espera a que termine la primera y parte de lo que esta dejó.
             // Sin esto, las dos leerían el mismo display y lo devolverían dos veces.
             $reparacion = Reparacion::lockForUpdate()->findOrFail($reparacion->id);
+
+            // Nunca pisar sin avisar lo que otra persona cambió mientras el modal estaba abierto
+            if ($original !== null && $reparacion->cambioDesde($original)) {
+                throw new ConflictoEdicionException();
+            }
 
             $reparacion->update(Arr::except($datos, ['usa_display', 'display_id', 'display_cantidad']));
 
@@ -140,6 +158,8 @@ class ReparacionService
                     $userId
                 );
             }
+
+            TiempoReal::avisar(new ReparacionCambio($reparacion->id, ReparacionCambio::ACTUALIZADA));
 
             return $reparacion->fresh(['repuestos.producto']);
         }, 3);
@@ -287,6 +307,10 @@ class ReparacionService
                 $reparacion->caja->ocupar();
             }
 
+            // Las otras pantallas cambian la fila, los contadores y las cajas libres;
+            // si quedó "arreglado", muestran el aviso de reparación lista
+            TiempoReal::avisar(new ReparacionCambio($reparacion->id, ReparacionCambio::ESTADO, $nuevoEstado));
+
             return $reparacion->fresh();
         });
     }
@@ -319,11 +343,15 @@ class ReparacionService
                 );
             }
 
-            return Abono::create([
+            $abono = Abono::create([
                 'reparacion_id' => $reparacion->id,
                 'monto'         => $monto,
                 'nota'          => $nota,
             ]);
+
+            TiempoReal::avisar(new ReparacionCambio($reparacion->id, ReparacionCambio::ABONO));
+
+            return $abono;
         });
     }
 }

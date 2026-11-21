@@ -51,14 +51,16 @@ trait CreaDatosDeReparacion
 
     /**
      * Crea una reparación con el servicio real (incluye display si se pasa).
+     * Si no se indica caja, crea una nueva libre (A1, A2, ...).
      */
     protected function crearReparacion(User $usuario, array $datos = []): Reparacion
     {
+        $datos['caja_id'] ??= $this->crearCaja('A', Caja::count() + 1)->id;
+
         return app(ReparacionService::class)->crear(array_merge([
             'nombre_cliente'   => 'Juan Pérez',
             'telefono_cliente' => '310 123 4567',
             'tiene_whatsapp'   => true,
-            'caja_id'          => $this->crearCaja()->id,
             'marca'            => 'Samsung',
             'modelo'           => 'A10',
             'valor_total'      => 150000,

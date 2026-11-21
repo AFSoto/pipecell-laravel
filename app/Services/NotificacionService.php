@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Enums\EstadoNotificacion;
+use App\Events\ReparacionCambio;
 use App\Exceptions\WhatsAppException;
 use App\Models\Notificacion;
 use App\Models\Reparacion;
+use App\Support\TiempoReal;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -145,7 +147,14 @@ class NotificacionService
                 break;
         }
 
-        $notificacion->save(); // solo escribe si algo cambió
+        if (! $notificacion->isDirty()) {
+            return;
+        }
+
+        $notificacion->save();
+
+        // Las pantallas abiertas cambian el indicador sin recargar (y avisan si no llegó)
+        TiempoReal::avisar(new ReparacionCambio($notificacion->reparacion_id, ReparacionCambio::WHATSAPP, autor: null));
     }
 
     /**
@@ -207,9 +216,13 @@ class NotificacionService
 
     private function registrar(array $datos, EstadoNotificacion $estado, ?string $detalle = null): Notificacion
     {
-        return Notificacion::create($datos + [
+        $notificacion = Notificacion::create($datos + [
             'estado'  => $estado,
             'detalle' => $detalle !== null ? Str::limit($detalle, 490) : null,
         ]);
+
+        TiempoReal::avisar(new ReparacionCambio($notificacion->reparacion_id, ReparacionCambio::WHATSAPP));
+
+        return $notificacion;
     }
 }

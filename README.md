@@ -17,6 +17,7 @@ Sistema web completo para la administración de talleres de reparación de celul
 - Edición de datos desde modal inline
 - Registro del **display usado** al crear o editar: se descuenta del inventario (1 por defecto, cantidad editable) y queda el movimiento de stock. No cambia el costo de "Repuestos": el valor total ya incluye repuestos y mano de obra
 - **Aviso automático por WhatsApp** al cliente cuando la reparación pasa a "Arreglado", una sola vez, con indicador en la fila (enviado / entregado / leído / falló / no enviado) y botón para reintentar si falló
+- **Tiempo real** (Pusher): lo que hace otra persona aparece solo en las demás pantallas (estado, cobros, datos, WhatsApp, contadores y cajas libres), y guardar una edición nunca pisa los cambios de otro sin avisar
 - Alertas visuales para reparaciones con más de 8 y 15 días en proceso
 - Filtros por estado, período (hoy / semana / mes / trimestre / año / personalizado) y búsqueda en tiempo real
 
@@ -196,6 +197,47 @@ Si algo de la configuración falla, la fila muestra "falló" con el motivo al pa
 
 ---
 
+## Tiempo real (Pusher)
+
+Con 2 o 3 personas trabajando a la vez (mostrador y tablet), lo que hace una aparece solo en las otras pantallas, sin recargar. Usa **Pusher Channels**, que mantiene las conexiones en vivo con los navegadores; por eso funciona en hosting compartido, sin VPS ni worker de colas.
+
+**Qué se actualiza solo en la lista de reparaciones:**
+
+- La fila de una reparación que otra persona cambió: estado, valores, abonos, datos, display e indicador de WhatsApp. Se resalta 2 segundos y, al pasar el cursor, dice quién la cambió. Si ya no corresponde al filtro que estás viendo, se va a los 3 segundos.
+- Los contadores por estado y las cajas libres del formulario de nueva reparación. Si se ocupa la caja que tenías elegida, se avisa debajo del campo antes de guardar.
+- Avisos flotantes solo cuando hay algo que hacer: "Lista: …" cuando otra persona marca Arreglado, y "No le llegó el WhatsApp… Llámalo", que se queda hasta cerrarlo.
+- Modales abiertos: si otra persona cambia la reparación que estás editando, aparece "Cargar sus cambios" y nunca se tocan los campos que estás escribiendo. Si cobra mientras tienes abierto el abono, el saldo se pone al día.
+
+Las reparaciones nuevas no se insertan solas en la lista: aparecen al recargar.
+
+**Siempre, aunque Pusher no esté configurado:** al guardar una edición se envían los datos con que se abrió el modal. Si otra persona cambió alguno de esos campos, no se guarda y se pide cargar sus cambios (un abono o un cambio de estado no cuentan).
+
+**Privacidad:** por Pusher solo pasa qué reparación cambió, qué pasó y el primer nombre de quien lo hizo. Los datos del cliente se piden a la plataforma (`GET /admin/reparaciones/sincronizar`).
+
+**Indicador:** en el encabezado, verde "En vivo" o gris "Sin conexión en vivo". Si la tablet se bloquea o pierde el wifi, al volver la pantalla se pone al día sola.
+
+**Configuración:**
+
+1. Crear una app de **Channels** en [dashboard.pusher.com](https://dashboard.pusher.com) (plan Sandbox, gratis: 100 conexiones simultáneas y 200.000 mensajes al día).
+2. Copiar sus *App Keys* al `.env`:
+
+   ```dotenv
+   BROADCAST_CONNECTION=pusher
+   PUSHER_APP_ID=
+   PUSHER_APP_KEY=
+   PUSHER_APP_SECRET=
+   PUSHER_APP_CLUSTER=
+   VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+   VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+   ```
+
+3. Correr `npm run build` con esas variables en el `.env` local: las `VITE_` quedan dentro del JS compilado. La key es pública; el secret nunca llega al navegador.
+4. En el servidor, poner las mismas variables en su `.env` y correr `php artisan config:cache`.
+
+Mientras no esté configurado, deja `BROADCAST_CONNECTION=null`: con `log`, cada cambio escribe una línea en `laravel.log`. Si Pusher falla o tarda más de 3 segundos, lo que se estaba guardando se guarda igual y el error queda en `laravel.log`.
+
+---
+
 ## Desarrollo
 
 ```bash
@@ -257,7 +299,9 @@ resources/
     └── layouts/            # app.blade.php, admin.blade.php
 
 routes/
-└── web.php                 # Todas las rutas (solo web, sin API)
+├── web.php                 # Rutas del panel (solo web, sin API)
+├── channels.php            # Canal privado "taller" del tiempo real (Pusher)
+└── webhooks.php            # Webhook de WhatsApp (sin sesión ni CSRF)
 ```
 
 ---
@@ -296,6 +340,9 @@ APP_URL=https://tudominio.com
 SESSION_DRIVER=database
 QUEUE_CONNECTION=database
 CACHE_STORE=file
+
+# null hasta configurar Pusher; después, pusher (ver "Tiempo real")
+BROADCAST_CONNECTION=null
 ```
 
 ### Apuntar el dominio a `/public`

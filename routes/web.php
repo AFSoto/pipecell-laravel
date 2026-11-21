@@ -61,6 +61,10 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::post('/reparaciones', [ReparacionController::class, 'store'])
         ->name('reparaciones.store');
 
+    // Tiempo real: estado actual de algunas filas, contadores y cajas libres
+    Route::get('/reparaciones/sincronizar', [ReparacionController::class, 'sincronizar'])
+        ->name('reparaciones.sincronizar');
+
     Route::patch('/reparaciones/{reparacion}/estado', [ReparacionController::class, 'actualizarEstado'])
         ->name('reparaciones.actualizarEstado');
 

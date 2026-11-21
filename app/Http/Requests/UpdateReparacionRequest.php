@@ -62,6 +62,11 @@ class UpdateReparacionRequest extends FormRequest
 
             // ── Display usado (se sincroniza con el inventario) ──
             ...$this->reglasDisplay($this->route('reparacion')),
+
+            // ── Cómo estaba la reparación al abrir el modal (data-edit) ──
+            // Si otra persona cambió alguno de esos campos, no se guarda (409).
+            // Opcional: las páginas abiertas antes de esta versión no lo envían.
+            'original'         => ['sometimes', 'nullable', 'array'],
         ];
     }
 

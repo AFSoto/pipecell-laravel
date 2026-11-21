@@ -220,11 +220,20 @@
                         @yield('page-title', 'Dashboard')
                     </h1>
 
-                    <div class="hidden sm:flex items-center gap-2 text-sm text-gray-500">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                        </svg>
-                        {{ now()->translatedFormat('l, d M Y') }}
+                    <div class="flex items-center gap-4">
+                        {{-- Tiempo real: lo pinta resources/js/tiempo-real.js (verde "En vivo" o gris) --}}
+                        <span id="indicador-en-vivo" role="status" aria-live="polite"
+                              class="hidden flex items-center gap-1.5 text-xs font-medium text-gray-500 select-none">
+                            <span data-punto class="w-2 h-2 rounded-full"></span>
+                            <span data-texto></span>
+                        </span>
+
+                        <div class="hidden sm:flex items-center gap-2 text-sm text-gray-500">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            {{ now()->translatedFormat('l, d M Y') }}
+                        </div>
                     </div>
                 </div>
             </header>
