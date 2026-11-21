@@ -43,7 +43,9 @@ trait ValidaDisplayUsado
     {
         return [
             'usa_display'      => ['boolean'],
-            'display_id'       => ['nullable', 'required_if_accepted:usa_display', 'integer', $this->reglaDisplayDisponible($reparacion)],
+            // bail: si no es un número, no se sigue a la regla que consulta el producto
+            // (con una lista, Producto::find() devolvía una colección y daba un 500)
+            'display_id'       => ['bail', 'nullable', 'required_if_accepted:usa_display', 'integer', $this->reglaDisplayDisponible($reparacion)],
             'display_cantidad' => ['nullable', 'integer', 'min:1', 'max:20'],
         ];
     }

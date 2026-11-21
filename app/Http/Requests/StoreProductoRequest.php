@@ -92,7 +92,7 @@ class StoreProductoRequest extends FormRequest
     {
         return function ($attribute, $value, $fail) {
             $categoria = Categoria::find($this->categoria_id);
-            if ($categoria && str_contains(strtolower($categoria->nombre), 'pantalla') && is_null($value)) {
+            if ($categoria?->esDePantallas() && is_null($value)) {
                 $fail('Debes indicar si la pantalla viene con marco o no.');
             }
         };
@@ -102,7 +102,7 @@ class StoreProductoRequest extends FormRequest
     {
         return function ($attribute, $value, $fail) use ($mensaje) {
             $categoria = Categoria::find($this->categoria_id);
-            if ($categoria && str_contains(strtolower($categoria->nombre), 'pantalla') && empty($value)) {
+            if ($categoria?->esDePantallas() && empty($value)) {
                 $fail($mensaje);
             }
         };

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Support\Str;
 
 /**
  * Modelo principal de reparación.
@@ -168,5 +169,14 @@ class Reparacion extends Model
     public function estaPagada(): bool
     {
         return $this->saldo_pendiente <= 0;
+    }
+
+    /**
+     * Descripción recortada para la celda de la tabla (null si no tiene).
+     * La usan la vista y la respuesta de edición, para que el recorte sea siempre el mismo.
+     */
+    public function descripcionCorta(): ?string
+    {
+        return filled($this->descripcion_falla) ? Str::limit($this->descripcion_falla, 20) : null;
     }
 }

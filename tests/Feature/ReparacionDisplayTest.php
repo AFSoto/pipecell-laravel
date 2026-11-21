@@ -7,6 +7,7 @@ use App\Models\Notificacion;
 use App\Models\Reparacion;
 use App\Services\ReparacionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
 
@@ -49,7 +50,7 @@ class ReparacionDisplayTest extends TestCase
         ], $cambios);
     }
 
-    public function test_crear_con_display_descuenta_stock_registra_movimiento_y_calcula_costo(): void
+    public function test_crear_con_display_descuenta_stock_y_registra_movimiento_sin_tocar_el_costo(): void
     {
         $usuario  = $this->crearUsuario();
         $pantalla = $this->crearPantalla(stock: 5, precioCompra: 40000);
@@ -66,7 +67,9 @@ class ReparacionDisplayTest extends TestCase
         $reparacion = Reparacion::sole();
 
         $this->assertSame(3, $pantalla->fresh()->stock);
-        $this->assertEquals(80000, $reparacion->costo_repuestos); // 40.000 × 2
+        // El valor total ya incluye repuestos y mano de obra: el display no llena Repuestos
+        $this->assertNull($reparacion->costo_repuestos);
+        $this->assertDatabaseHas('reparacion_repuestos', ['reparacion_id' => $reparacion->id, 'costo_unitario' => 40000]);
         $this->assertDatabaseHas('reparacion_repuestos', [
             'reparacion_id' => $reparacion->id,
             'producto_id'   => $pantalla->id,
@@ -166,11 +169,12 @@ class ReparacionDisplayTest extends TestCase
             ->assertJsonPath('data.display_id', $pantallaB->id)
             ->assertJsonPath('data.display_nombre', 'Pantalla A20')
             ->assertJsonPath("stocks.{$pantallaA->id}", 5)
-            ->assertJsonPath("stocks.{$pantallaB->id}", 4);
+            ->assertJsonPath("stocks.{$pantallaB->id}", 4)
+            ->assertJsonMissingPath('data.display_costo');
 
         $this->assertSame(5, $pantallaA->fresh()->stock);
         $this->assertSame(4, $pantallaB->fresh()->stock);
-        $this->assertEquals(60000, $reparacion->fresh()->costo_repuestos);
+        $this->assertNull($reparacion->fresh()->costo_repuestos);
 
         $devolucion = MovimientoStock::with('tipoMovimiento')->where('producto_id', $pantallaA->id)->where('cantidad', '>', 0)->sole();
         $this->assertSame(ReparacionService::MOTIVO_DEVOLUCION, $devolucion->tipoMovimiento->nombre);
@@ -266,5 +270,36 @@ class ReparacionDisplayTest extends TestCase
             ->assertSee('Display: Pantalla Samsung A10 ×1')
             ->assertSee('Pantalla Samsung A10 — stock 2')
             ->assertSee('data-whatsapp="{&quot;estado&quot;:&quot;enviado&quot;', false);
+    }
+
+    public function test_editar_devuelve_la_descripcion_recortada_y_el_stock_de_todos_los_displays(): void
+    {
+        $usuario     = $this->crearUsuario();
+        $pantalla    = $this->crearPantalla('Pantalla A10', stock: 5);
+        $otra        = $this->crearPantalla('Pantalla A30', stock: 7);
+        $reparacion  = $this->crearReparacion($usuario);
+        $descripcion = 'No enciende después de caerse al agua';
+
+        $this->actingAs($usuario)->putJson(route('admin.reparaciones.update', $reparacion),
+            $this->datosEdicion($reparacion, ['descripcion_falla' => $descripcion])
+        )->assertOk()
+            // El mismo recorte que muestra la tabla al cargar (Reparacion::descripcionCorta)
+            ->assertJsonPath('data.descripcion_corta', Str::limit($descripcion, 20))
+            // Todas las pantallas activas, aunque esta edición no tocó ninguna
+            ->assertJsonPath("stocks.{$pantalla->id}", 5)
+            ->assertJsonPath("stocks.{$otra->id}", 7);
+    }
+
+    public function test_display_id_que_no_es_un_numero_da_error_de_validacion_y_no_500(): void
+    {
+        $usuario  = $this->crearUsuario();
+        $pantalla = $this->crearPantalla();
+
+        $this->actingAs($usuario)->postJson(route('admin.reparaciones.store'), $this->datosFormulario([
+            'usa_display' => '1',
+            'display_id'  => [$pantalla->id],
+        ]))->assertStatus(422)->assertJsonValidationErrors(['display_id' => 'no es válido']);
+
+        $this->assertDatabaseCount('reparaciones', 0);
     }
 }

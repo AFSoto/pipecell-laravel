@@ -336,7 +336,6 @@
     'display_id'        => $display?->producto_id,
     'display_nombre'    => $display?->producto?->nombre,
     'display_cantidad'  => $display?->cantidad ?? 1,
-    'display_costo'     => (int) ($display?->costo_unitario ?? 0),
     'abonos'            => $rep->abonos->map(fn($a) => [
         'monto'      => (int) $a->monto,
         'nota'       => $a->nota ?? '',
@@ -379,7 +378,7 @@
 
                     {{-- Descripción de la falla recortada a 20 caracteres; el texto completo va en el tooltip --}}
                     <td class="py-3 px-4 text-xs whitespace-nowrap {{ $rep->descripcion_falla ? 'text-purple-600 font-medium' : 'text-gray-400' }}" data-celda="descripcion" title="{{ $rep->descripcion_falla }}">
-    {{ $rep->descripcion_falla ? Str::limit($rep->descripcion_falla, 20) : '—' }}
+    {{ $rep->descripcionCorta() ?? '—' }}
 </td>
 
                     <td class="py-3 px-4">
@@ -1083,12 +1082,10 @@ function actualizarFilaEdicion(datos) {
     etiquetaDisplay.querySelector('span').title       = textoDisplay;
     etiquetaDisplay.classList.toggle('hidden', !datos.display_id);
 
-    // Mismo recorte que Str::limit(20) en Blade
+    // El recorte viene del servidor (Reparacion::descripcionCorta), igual que en Blade
     const descripcion = datos.descripcion_falla || '';
     const celdaDescripcion = editFila.querySelector('[data-celda="descripcion"]');
-    celdaDescripcion.textContent = !descripcion
-        ? '—'
-        : descripcion.length > 20 ? descripcion.slice(0, 20).trimEnd() + '...' : descripcion;
+    celdaDescripcion.textContent = datos.descripcion_corta || '—';
     celdaDescripcion.title = descripcion;
     celdaDescripcion.classList.toggle('text-purple-600', !!descripcion);
     celdaDescripcion.classList.toggle('font-medium', !!descripcion);
@@ -1096,7 +1093,7 @@ function actualizarFilaEdicion(datos) {
 
     editFila.querySelector('[data-celda="valor"]').textContent = '$' + datos.valor_total.toLocaleString('es-CO');
 
-    const abonado = parseInt(editFila.querySelector('[data-celda="abonado"]').textContent.replace(/\D/g, '')) || 0;
+    const abonado = leerMonto(editFila, 'abonado');
     const saldo   = datos.valor_total - abonado;
     editFila.querySelector('[data-celda="saldo"]').innerHTML = `
         <span class="${saldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">
@@ -1146,13 +1143,10 @@ function actualizarFilaEdicion(datos) {
                 // Mostrar notificación flotante
                 mostrarNotificacion('Estado actualizado correctamente');
 
-                // Aviso por WhatsApp: solo viene al pasar de "En proceso" a "Arreglado".
-                // Si no vino, igual se repinta para mostrar u ocultar el botón "Enviar WhatsApp".
-                if (data.notificacion) {
-                    mostrarResultadoWhatsapp(fila, data.notificacion);
-                } else {
-                    pintarWhatsapp(fila);
-                }
+                // Aviso por WhatsApp: el intento nuevo solo viene al pasar de "En proceso"
+                // a "Arreglado"; el estado actual viene siempre, y con el nuevo estado de
+                // la fila se muestra u oculta el botón "Enviar WhatsApp".
+                aplicarRespuestaWhatsapp(fila, data);
 
                 // ── Animación de desaparición si hay filtro de estado activo ──
                 //
@@ -1297,8 +1291,10 @@ function actualizarFilaEdicion(datos) {
     // ══════════════════════════════════════
     // AVISO POR WHATSAPP
     // ══════════════════════════════════════
+    // Colores del indicador. "leido" es un enviado que el cliente ya abrió (webhook de Meta).
     const ESTILOS_WHATSAPP = {
         enviado: 'bg-green-50 text-green-700',
+        leido:   'bg-blue-50 text-blue-700',
         fallido: 'bg-red-50 text-red-600',
         omitido: 'bg-gray-100 text-gray-500',
     };
@@ -1316,8 +1312,9 @@ function actualizarFilaEdicion(datos) {
         contenedor.replaceChildren();
 
         if (aviso) {
+            const estilo = ESTILOS_WHATSAPP[aviso.entrega === 'leido' ? 'leido' : aviso.estado] || ESTILOS_WHATSAPP.omitido;
             const chip = document.createElement('span');
-            chip.className = `inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-lg whitespace-nowrap ${ESTILOS_WHATSAPP[aviso.estado] || ESTILOS_WHATSAPP.omitido}`;
+            chip.className = `inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-lg whitespace-nowrap ${estilo}`;
             chip.textContent = aviso.etiqueta;
             chip.title = aviso.mensaje;
             contenedor.appendChild(chip);
@@ -1334,15 +1331,21 @@ function actualizarFilaEdicion(datos) {
     }
 
     /**
-     * Guarda el resultado del aviso en la fila, repinta el indicador
-     * y muestra la notificación flotante (dura más que las normales).
+     * Aplica al indicador de la fila lo que respondió el servidor:
+     *   data.whatsapp     → estado actual (último intento), para repintar la fila
+     *   data.notificacion → resultado de un intento nuevo, para el aviso flotante
+     *                       (dura más que los normales)
      */
-    function mostrarResultadoWhatsapp(fila, aviso) {
-        fila.dataset.whatsapp = JSON.stringify(aviso);
+    function aplicarRespuestaWhatsapp(fila, data) {
+        if ('whatsapp' in data) {
+            fila.dataset.whatsapp = data.whatsapp ? JSON.stringify(data.whatsapp) : '';
+        }
         pintarWhatsapp(fila);
 
-        const tipo = { enviado: 'success', omitido: 'warning', fallido: 'error' }[aviso.estado] || 'warning';
-        mostrarNotificacion(aviso.mensaje, tipo, 6000);
+        if (data.notificacion) {
+            const tipo = { enviado: 'success', omitido: 'warning', fallido: 'error' }[data.notificacion.estado] || 'warning';
+            mostrarNotificacion(data.notificacion.mensaje, tipo, 6000);
+        }
     }
 
     /**
@@ -1362,8 +1365,11 @@ function actualizarFilaEdicion(datos) {
         })
         .then(res => res.json())
         .then(data => {
-            if (data.success && data.notificacion) {
-                mostrarResultadoWhatsapp(fila, data.notificacion);
+            if (data.success) {
+                // Si ya se había enviado (por ejemplo desde otra pantalla), no hay intento
+                // nuevo: la fila se pone al día y se explica por qué no salió otro mensaje.
+                aplicarRespuestaWhatsapp(fila, data);
+                if (!data.notificacion && data.message) mostrarNotificacion(data.message, 'warning', 6000);
             } else {
                 mostrarNotificacion(data.message || 'No se pudo enviar el WhatsApp', 'error');
                 pintarWhatsapp(fila);
@@ -1378,10 +1384,23 @@ function actualizarFilaEdicion(datos) {
     // ══════════════════════════════════════
     // DISPLAY USADO (modales crear / editar)
     // ══════════════════════════════════════
-    const COSTO_REPUESTOS_IDS = {
-        nueva: { oculto: 'costo_repuestos',      visual: 'costo_repuestos_visual' },
-        edit:  { oculto: 'edit-costo_repuestos', visual: 'edit-costo_repuestos_visual' },
-    };
+    /**
+     * Opciones de cada select de displays ('nueva' y 'edit'), guardadas al cargar la página.
+     * El buscador reconstruye el select desde aquí en vez de ocultar opciones con
+     * "hidden", que Safari de iPhone/iPad ignora en la lista nativa.
+     *   vacia:    la opción "Seleccionar display..."
+     *   base:     las pantallas activas que mandó el servidor
+     *   temporal: el display inactivo de la reparación que se está editando (o null)
+     */
+    const OPCIONES_DISPLAY = {};
+
+    document.querySelectorAll('select.select-display').forEach(select => {
+        OPCIONES_DISPLAY[select.id.replace('-display_id', '')] = {
+            vacia:    select.options[0],
+            base:     Array.from(select.options).filter(opcion => opcion.value),
+            temporal: null,
+        };
+    });
 
     function toggleDisplay(prefijo) {
         const marcado = document.getElementById(`${prefijo}-usa_display`).checked;
@@ -1389,74 +1408,60 @@ function actualizarFilaEdicion(datos) {
     }
 
     /**
-     * Filtra las opciones del select de displays por el texto del buscador.
+     * Deja en el select solo los displays que coinciden con el texto del buscador.
+     * El que está elegido siempre se queda, para no perder la elección al buscar.
      */
     function filtrarDisplays(prefijo, texto) {
+        const select   = document.getElementById(`${prefijo}-display_id`);
+        const opciones = OPCIONES_DISPLAY[prefijo];
         const busqueda = texto.trim().toLowerCase();
-        const select = document.getElementById(`${prefijo}-display_id`);
+        const elegido  = select.value;
 
-        Array.from(select.options).forEach(opcion => {
-            if (!opcion.value) return; // "Seleccionar display..."
-            opcion.hidden = busqueda !== '' && !opcion.text.toLowerCase().includes(busqueda);
-        });
-    }
+        const visibles = [opciones.temporal, ...opciones.base].filter(opcion =>
+            opcion && (busqueda === '' || opcion.value === elegido || opcion.text.toLowerCase().includes(busqueda))
+        );
 
-    /**
-     * Pone en "Repuestos" el costo del display elegido (precio de compra × cantidad).
-     * El usuario lo puede cambiar después; el servidor solo lo calcula si queda vacío.
-     */
-    function calcularCostoDisplay(prefijo) {
-        const opcion = document.getElementById(`${prefijo}-display_id`).selectedOptions[0];
-        if (!opcion || !opcion.value) return;
-
-        const cantidad = Math.max(1, parseInt(document.getElementById(`${prefijo}-display_cantidad`).value) || 1);
-        const costo    = (parseInt(opcion.dataset.precio) || 0) * cantidad;
-        const ids      = COSTO_REPUESTOS_IDS[prefijo];
-
-        document.getElementById(ids.oculto).value = costo;
-        document.getElementById(ids.visual).value = costo ? costo.toLocaleString('es-CO') : '';
+        select.replaceChildren(opciones.vacia, ...visibles);
+        select.value = elegido;
     }
 
     /**
      * Carga en el modal de edición el display que tiene la reparación.
-     * Si ese display ya no está activo, se agrega como opción para poder mantenerlo,
-     * y se habilita aunque su stock esté en 0 (las unidades ya son de esta reparación).
+     * Si ese display ya no está activo, entra como opción temporal "(inactivo)" solo
+     * para esta reparación: al abrir otra, se descarta. El display de la reparación se
+     * habilita aunque su stock esté en 0, porque esas unidades ya son de ella.
      */
     function prepararDisplayEdicion(datos) {
-        const select = document.getElementById('edit-display_id');
+        const opciones = OPCIONES_DISPLAY.edit;
+        const idActual = datos.display_id ? String(datos.display_id) : '';
 
-        // Restablecer el estado de las opciones según su stock
-        Array.from(select.options).forEach(opcion => {
-            if (opcion.value) opcion.disabled = (parseInt(opcion.dataset.stock) || 0) < 1;
+        opciones.base.forEach(opcion => {
+            opcion.disabled = opcion.value !== idActual && (parseInt(opcion.dataset.stock) || 0) < 1;
         });
 
-        if (datos.display_id) {
-            let opcion = select.querySelector(`option[value="${datos.display_id}"]`);
-            if (!opcion) {
-                opcion = new Option(`${datos.display_nombre} (inactivo)`, datos.display_id);
-                opcion.dataset.nombre = datos.display_nombre;
-                opcion.dataset.precio = datos.display_costo || 0;
-                opcion.dataset.stock  = 0;
-                select.add(opcion);
-            }
-            opcion.disabled = false;
-        }
+        opciones.temporal = idActual && !opciones.base.some(opcion => opcion.value === idActual)
+            ? new Option(`${datos.display_nombre} (inactivo)`, idActual)
+            : null;
 
-        document.getElementById('edit-usa_display').checked    = !!datos.display_id;
-        document.getElementById('edit-buscar-display').value   = '';
+        document.getElementById('edit-usa_display').checked  = !!idActual;
+        document.getElementById('edit-buscar-display').value = '';
         filtrarDisplays('edit', '');
-        select.value = datos.display_id ? String(datos.display_id) : '';
+        document.getElementById('edit-display_id').value       = idActual;
         document.getElementById('edit-display_cantidad').value = datos.display_cantidad || 1;
         toggleDisplay('edit');
     }
 
     /**
      * Refresca el stock que muestran los selects de displays después de editar.
-     * stocks = { productoId: stockNuevo, ... }
+     * stocks = { productoId: stock, ... } con todas las pantallas activas. Se actualiza
+     * la lista guardada, así también quedan al día las opciones que el buscador sacó.
      */
     function actualizarStocksDisplays(stocks) {
-        Object.entries(stocks || {}).forEach(([id, stock]) => {
-            document.querySelectorAll(`.select-display option[value="${id}"]`).forEach(opcion => {
+        Object.values(OPCIONES_DISPLAY).forEach(({ base }) => {
+            base.forEach(opcion => {
+                if (!stocks || !(opcion.value in stocks)) return;
+
+                const stock = parseInt(stocks[opcion.value]) || 0;
                 opcion.dataset.stock = stock;
                 opcion.disabled      = stock < 1;
                 opcion.textContent   = `${opcion.dataset.nombre} — stock ${stock}`;
@@ -1468,11 +1473,18 @@ function actualizarFilaEdicion(datos) {
     // MODAL DE ABONOS
     // ══════════════════════════════════════
     /**
-     * Lee el saldo pendiente de la celda de la fila: es la única fuente de verdad,
-     * porque se actualiza con cada abono y cada edición. Respeta el signo si quedó negativo.
+     * Lee un monto de una celda de la fila ("$90.000" → 90000). Respeta el signo si quedó negativo.
+     */
+    function leerMonto(fila, celda) {
+        return parseInt(fila.querySelector(`[data-celda="${celda}"]`).textContent.replace(/[^\d-]/g, '')) || 0;
+    }
+
+    /**
+     * Saldo pendiente de la fila: la celda es la única fuente de verdad,
+     * porque se actualiza con cada abono y cada edición.
      */
     function leerSaldoDeFila(fila) {
-        return parseInt(fila.querySelector('[data-celda="saldo"]').textContent.replace(/[^\d-]/g, '')) || 0;
+        return leerMonto(fila, 'saldo');
     }
 
     /**
@@ -1530,11 +1542,10 @@ function actualizarFilaEdicion(datos) {
     if (!fila) return;
 
     const celdaAbonado = fila.querySelector('[data-celda="abonado"]');
-    const celdaValor   = fila.querySelector('[data-celda="valor"]');
     const celdaSaldo   = fila.querySelector('[data-celda="saldo"]');
 
-    const abonadoActual = parseInt(celdaAbonado.textContent.replace(/\D/g, '')) || 0;
-    const valorTotal    = parseInt(celdaValor.textContent.replace(/\D/g, '')) || 0;
+    const abonadoActual = leerMonto(fila, 'abonado');
+    const valorTotal    = leerMonto(fila, 'valor');
     const nuevoAbonado  = abonadoActual + parseInt(montoNum);
     const nuevoSaldo    = valorTotal - nuevoAbonado;
 
@@ -1677,6 +1688,17 @@ function actualizarFilaEdicion(datos) {
             input.value = parseInt(valor).toLocaleString('es-CO');
         }
     }
+
+    // Si el formulario de crear volvió con errores de validación, los montos llegan
+    // en los campos ocultos (old()); se muestran también en los visibles.
+    [
+        ['valor_total_visual',     'valor_total'],
+        ['costo_repuestos_visual', 'costo_repuestos'],
+        ['abono_inicial_visual',   'abono_inicial'],
+    ].forEach(([visual, oculto]) => {
+        const valor = parseInt(document.getElementById(oculto)?.value);
+        if (valor) document.getElementById(visual).value = valor.toLocaleString('es-CO');
+    });
 
     // Pintar el indicador de WhatsApp de cada fila al cargar la página
     document.querySelectorAll('tr.reparacion-row').forEach(pintarWhatsapp);

@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Notificacion;
 use App\Models\Reparacion;
+use App\Services\WhatsAppService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Mockery\MockInterface;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
 
@@ -56,7 +58,10 @@ class NotificacionWhatsappTest extends TestCase
         $this->cambiarEstado($reparacion, 'arreglado')
             ->assertOk()
             ->assertJsonPath('notificacion.estado', 'enviado')
-            ->assertJsonPath('notificacion.mensaje', 'WhatsApp enviado a 310 123 4567');
+            ->assertJsonPath('notificacion.mensaje', 'WhatsApp enviado a 310 123 4567')
+            // Estado actual del indicador: enviado, todavía sin confirmación de entrega
+            ->assertJsonPath('whatsapp.estado', 'enviado')
+            ->assertJsonPath('whatsapp.entrega', null);
 
         Http::assertSent(function (Request $request) {
             return $request->url() === self::URL_META
@@ -204,6 +209,49 @@ class NotificacionWhatsappTest extends TestCase
         Http::assertSentCount(2);
         $this->assertSame(2, Notificacion::count());
         $this->assertSame('wamid.REINTENTO', $reparacion->ultimoWhatsapp()->first()->mensaje_id);
+    }
+
+    public function test_el_boton_no_reenvia_si_el_aviso_ya_salio(): void
+    {
+        $this->fakeEnvioExitoso();
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado')->assertJsonPath('notificacion.estado', 'enviado');
+
+        // Otra persona con la página abierta desde antes todavía ve "Reintentar" y lo pulsa
+        $this->postJson(route('admin.reparaciones.enviarWhatsapp', $reparacion))
+            ->assertOk()
+            ->assertJsonPath('notificacion', null)
+            ->assertJsonPath('message', 'Este aviso ya se había enviado: no se mandó otra vez.')
+            ->assertJsonPath('whatsapp.estado', 'enviado');
+
+        Http::assertSentCount(1);
+        $this->assertSame(1, Notificacion::count());
+    }
+
+    public function test_un_error_interno_al_enviar_queda_guardado_como_fallido(): void
+    {
+        $this->mock(WhatsAppService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('estaConfigurado')->andReturnTrue();
+            $mock->shouldReceive('enviarPlantilla')->andThrow(new \RuntimeException('Fallo inesperado'));
+        });
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado')
+            ->assertOk()
+            ->assertJsonPath('notificacion.estado', 'fallido')
+            // Queda en la base: al recargar, la fila sigue mostrando el fallo y "Reintentar"
+            ->assertJsonPath('whatsapp.estado', 'fallido');
+
+        $this->assertDatabaseHas('notificaciones', [
+            'reparacion_id' => $reparacion->id,
+            'estado'        => 'fallido',
+            'detalle'       => Notificacion::DETALLE_ERROR_INTERNO,
+        ]);
     }
 
     public function test_el_boton_solo_funciona_en_arreglado(): void

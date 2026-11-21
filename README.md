@@ -15,8 +15,8 @@ Sistema web completo para la administración de talleres de reparación de celul
 - Registro de abonos parciales con control de saldo pendiente
 - Bloqueo: no se puede marcar como entregada una reparación con saldo pendiente
 - Edición de datos desde modal inline
-- Registro del **display usado** al crear o editar: se descuenta del inventario (1 por defecto, cantidad editable), queda el movimiento de stock y su costo pasa a "Repuestos"
-- **Aviso automático por WhatsApp** al cliente cuando la reparación pasa a "Arreglado", con indicador en la fila (enviado / falló / no enviado) y botón para reintentar
+- Registro del **display usado** al crear o editar: se descuenta del inventario (1 por defecto, cantidad editable) y queda el movimiento de stock. No cambia el costo de "Repuestos": el valor total ya incluye repuestos y mano de obra
+- **Aviso automático por WhatsApp** al cliente cuando la reparación pasa a "Arreglado", una sola vez, con indicador en la fila (enviado / entregado / leído / falló / no enviado) y botón para reintentar si falló
 - Alertas visuales para reparaciones con más de 8 y 15 días en proceso
 - Filtros por estado, período (hoy / semana / mes / trimestre / año / personalizado) y búsqueda en tiempo real
 
@@ -152,6 +152,9 @@ WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_API_VERSION=v26.0
 WHATSAPP_PLANTILLA_LISTA=reparacion_lista
 WHATSAPP_IDIOMA=es
+# Webhook de entrega (opcional: sin ellas no se sabe si el aviso llegó)
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_APP_SECRET=
 ```
 
 > El correo es necesario para la recuperación de contraseña.
@@ -162,20 +165,34 @@ WHATSAPP_IDIOMA=es
 
 Cuando una reparación pasa de **En proceso** a **Arreglado**, la plataforma envía al cliente una plantilla de WhatsApp y muestra el resultado en la fila. No se envía si el cliente no tiene teléfono, si está desmarcado "Tiene WhatsApp" o si el número no es un celular colombiano.
 
+Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" y otra vez a "Arreglado", o dos personas pulsen el botón al mismo tiempo, no se repite. Solo se puede reintentar si el envío falló o si Meta avisó que no lo pudo entregar.
+
+"Enviado" (✓) significa que Meta aceptó el mensaje. Con el webhook configurado, la fila pasa a **entregado** (✓✓) o **leído** (✓✓ en azul) al recargar la página, o a **falló** si el número no tiene WhatsApp.
+
 **Costo:** desde el 1 de octubre de 2026 Meta cobra cada aviso de negocio (plantilla *Utility*), unos US$0,0008 por mensaje entregado en Colombia. Para desarrollar, Meta da un número de prueba gratis que envía a hasta 5 números verificados.
 
 **Configuración:**
 
 1. Crear un portafolio en [business.facebook.com](https://business.facebook.com) y una app tipo *Business* en [developers.facebook.com](https://developers.facebook.com) con el producto WhatsApp.
 2. Registrar el número que enviará los avisos y agregar un método de pago en WhatsApp Manager.
-3. Crear la plantilla `reparacion_lista` (categoría **Utility**, idioma español) y esperar la aprobación:
+3. Crear la plantilla `reparacion_lista` (categoría **Utility**) y esperar la aprobación:
 
    ```text
    Hola {{1}}, tu {{2}} ya está listo para recoger en PipeCell. Saldo pendiente: {{3}}. ¡Te esperamos!
    ```
 
    `{{1}}` = nombre del cliente, `{{2}}` = marca y modelo, `{{3}}` = saldo pendiente (ej. `$50.000`).
-4. Crear un *System User* con un token permanente (permiso `whatsapp_business_messaging`) y poner el token y el *Phone Number ID* en el `.env`.
+   - **Idioma:** "Spanish" (código `es`). Si eliges otro, como "Spanish (MEX)", pon su código en `WHATSAPP_IDIOMA` (ej. `es_MX`).
+   - **Tipo de variable:** número (`{{1}}`, `{{2}}`, `{{3}}`), no con nombre. La plataforma envía los datos en ese orden.
+4. Crear un *System User* con un token **permanente** (permiso `whatsapp_business_messaging`) y poner el token y el *Phone Number ID* en el `.env`. El token temporal de la página "API Setup" vence en 24 horas.
+5. Webhook de entrega (opcional, recomendado):
+   1. Inventar una clave larga y ponerla en `WHATSAPP_VERIFY_TOKEN`; copiar el *App Secret* (Configuración de la app → Básica) en `WHATSAPP_APP_SECRET`. Correr `php artisan config:cache`.
+   2. En la app de Meta → WhatsApp → Configuración → Webhook: URL de devolución `https://tudominio.com/webhooks/whatsapp` y como token de verificación la misma clave de `WHATSAPP_VERIFY_TOKEN`.
+   3. Suscribirse al campo `messages`.
+
+   El webhook solo funciona en el servidor (Meta necesita una URL pública con HTTPS). Rechaza toda llamada que no venga firmada con el App Secret.
+
+Si algo de la configuración falla, la fila muestra "falló" con el motivo al pasar el cursor por encima.
 
 ---
 
@@ -255,6 +272,7 @@ npm run build
 composer install --no-dev --optimize-autoloader
 
 # 3. Migraciones pendientes (cuando la versión trae migraciones nuevas)
+#    No corras db:seed en producción: crea los usuarios por defecto
 php artisan migrate --force
 
 # 4. Optimizaciones Laravel (vuelve a correrlas si cambiaste el .env)

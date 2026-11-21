@@ -93,18 +93,21 @@ class ReparacionService
             }
 
             // ── 4. Display usado (si se indicó) ──
+            // Solo mueve inventario: el costo de Repuestos lo escribe el usuario,
+            // porque el valor total ya incluye repuestos y mano de obra.
+            $repuestos = collect();
+
             if (! empty($datos['display_id'])) {
-                $repuesto = $this->sincronizarDisplay(
+                $repuestos->push($this->sincronizarDisplay(
                     $reparacion,
                     (int) $datos['display_id'],
                     (int) ($datos['display_cantidad'] ?? 1),
                     $userId
-                );
-
-                $this->completarCostoRepuestos($reparacion, $repuesto, $datos);
+                ));
             }
 
-            return $reparacion;
+            // Queda cargado para que el controlador no lo vuelva a consultar
+            return $reparacion->setRelation('repuestos', $repuestos);
         });
     }
 
@@ -114,26 +117,32 @@ class ReparacionService
      *
      * Si la petición no trae 'display_id' (clientes con la página vieja abierta),
      * el display y el inventario no se tocan.
+     *
+     * Si MySQL detecta un bloqueo cruzado con otra transacción, la reintenta
+     * hasta 3 veces antes de fallar.
      */
     public function actualizar(Reparacion $reparacion, array $datos, int $userId): Reparacion
     {
         return DB::transaction(function () use ($reparacion, $datos, $userId) {
 
+            // Releer con bloqueo: si dos personas guardan la misma reparación a la vez,
+            // la segunda espera a que termine la primera y parte de lo que esta dejó.
+            // Sin esto, las dos leerían el mismo display y lo devolverían dos veces.
+            $reparacion = Reparacion::lockForUpdate()->findOrFail($reparacion->id);
+
             $reparacion->update(Arr::except($datos, ['usa_display', 'display_id', 'display_cantidad']));
 
             if (array_key_exists('display_id', $datos)) {
-                $repuesto = $this->sincronizarDisplay(
+                $this->sincronizarDisplay(
                     $reparacion,
                     $datos['display_id'] ? (int) $datos['display_id'] : null,
                     (int) ($datos['display_cantidad'] ?? 1),
                     $userId
                 );
-
-                $this->completarCostoRepuestos($reparacion, $repuesto, $datos);
             }
 
             return $reparacion->fresh(['repuestos.producto']);
-        });
+        }, 3);
     }
 
     /**
@@ -185,6 +194,14 @@ class ReparacionService
 
             // Otro display (o no tenía): devolver el anterior y descontar el nuevo
             if ($actual) {
+                // Bloquear los dos productos en orden de id antes de mover stock: si dos
+                // reparaciones intercambian displays (A→B y B→A) al mismo tiempo, las dos
+                // piden los bloqueos en el mismo orden y no se traban entre sí.
+                Producto::whereIn('id', [$actual->producto_id, $productoId])
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
                 $this->moverStock($actual->producto, 'entrada', $actual->cantidad, self::MOTIVO_DEVOLUCION, $nota, $userId);
             }
 
@@ -203,19 +220,8 @@ class ReparacionService
                 return $actual->fresh('producto');
             }
 
-            return $reparacion->repuestos()->create($datosRepuesto);
+            return $reparacion->repuestos()->create($datosRepuesto)->setRelation('producto', $producto);
         });
-    }
-
-    /**
-     * Si el usuario no escribió el costo de repuestos, se toma el del display
-     * (precio de compra × cantidad) para que la ganancia del dashboard sea real.
-     */
-    private function completarCostoRepuestos(Reparacion $reparacion, ?ReparacionRepuesto $repuesto, array $datos): void
-    {
-        if ($repuesto && ($datos['costo_repuestos'] ?? null) === null) {
-            $reparacion->update(['costo_repuestos' => $repuesto->costoTotal()]);
-        }
     }
 
     private function moverStock(Producto $producto, string $operacion, int $cantidad, string $motivo, string $nota, int $userId): void

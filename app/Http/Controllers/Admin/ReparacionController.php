@@ -7,10 +7,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReparacionRequest;
 use App\Http\Requests\UpdateReparacionRequest;
 use App\Models\Caja;
+use App\Models\Notificacion;
 use App\Models\Producto;
 use App\Models\Reparacion;
 use App\Services\NotificacionService;
 use App\Services\ReparacionService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 /**
@@ -168,10 +170,9 @@ class ReparacionController extends Controller
 
         // Displays (pantallas activas) para el campo "¿Se usó display?"
         // de los modales de crear y editar
-        $displays = Producto::activos()
-            ->pantallas()
+        $displays = $this->consultaDisplays()
             ->orderBy('nombre')
-            ->get(['id', 'nombre', 'stock', 'precio_compra']);
+            ->get(['id', 'nombre', 'stock']);
 
         // Retorna la vista principal
         // junto con toda la información necesaria
@@ -194,9 +195,6 @@ class ReparacionController extends Controller
     public function update(UpdateReparacionRequest $request, Reparacion $reparacion)
     {
         try {
-            // Producto del display antes del cambio, para devolver su stock actualizado
-            $displayAnterior = $reparacion->repuestos()->value('producto_id');
-
             $reparacion = $this->reparacionService->actualizar(
                 $reparacion,
                 $request->validated(),
@@ -204,10 +202,6 @@ class ReparacionController extends Controller
             );
 
             $repuesto = $reparacion->repuestos->first();
-
-            // Stock nuevo de los displays afectados, para refrescar los selects sin recargar
-            $stocks = Producto::whereIn('id', array_filter([$displayAnterior, $repuesto?->producto_id]))
-                ->pluck('stock', 'id');
 
             return response()->json([
                 'success' => true,
@@ -220,14 +214,17 @@ class ReparacionController extends Controller
                     'marca'             => $reparacion->marca,
                     'modelo'            => $reparacion->modelo,
                     'descripcion_falla' => $reparacion->descripcion_falla,
+                    // Mismo recorte que la celda de la tabla: así el JS no lo repite
+                    'descripcion_corta' => $reparacion->descripcionCorta(),
                     'valor_total'       => (int) $reparacion->valor_total,
                     'costo_repuestos'   => (int) $reparacion->costo_repuestos,
                     'display_id'        => $repuesto?->producto_id,
                     'display_nombre'    => $repuesto?->producto?->nombre,
                     'display_cantidad'  => $repuesto?->cantidad ?? 1,
-                    'display_costo'     => (int) ($repuesto?->costo_unitario ?? 0),
                 ],
-                'stocks'  => $stocks,
+                // Stock actual de todos los displays, para refrescar los selects sin
+                // recargar (incluye cambios que hicieron otras personas o las ventas)
+                'stocks'  => $this->consultaDisplays()->pluck('stock', 'id'),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -246,7 +243,7 @@ class ReparacionController extends Controller
             $reparacion = $this->reparacionService->crear($request->validated(), $request->user()->id);
 
             $mensaje  = 'Reparación registrada con éxito.';
-            $repuesto = $reparacion->repuestos()->with('producto')->first();
+            $repuesto = $reparacion->repuestos->first(); // crear() ya lo deja cargado
 
             if ($repuesto) {
                 $unidades = $repuesto->cantidad === 1 ? '1 unidad' : "{$repuesto->cantidad} unidades";
@@ -298,11 +295,15 @@ class ReparacionController extends Controller
             'success'      => true,
             'message'      => 'Estado actualizado correctamente.',
             'notificacion' => $notificacion,
+            'whatsapp'     => $this->estadoWhatsapp($reparacion),
         ]);
     }
 
     /**
      * Envía (o reintenta) el WhatsApp de "reparación lista" desde el botón de la fila.
+     *
+     * Si el aviso ya había salido (por ejemplo, otra persona lo envió desde su pantalla),
+     * no se manda otra vez: se devuelve el estado actual para poner la fila al día.
      */
     public function enviarWhatsapp(Request $request, Reparacion $reparacion)
     {
@@ -313,32 +314,48 @@ class ReparacionController extends Controller
             ], 422);
         }
 
-        $notificacion = $this->avisarReparacionLista($reparacion, $request->user()->id, forzar: true);
+        $notificacion = $this->avisarReparacionLista($reparacion, $request->user()->id);
 
         return response()->json([
             'success'      => true,
+            'message'      => $notificacion ? null : 'Este aviso ya se había enviado: no se mandó otra vez.',
             'notificacion' => $notificacion,
+            'whatsapp'     => $this->estadoWhatsapp($reparacion),
         ]);
+    }
+
+    /**
+     * Último intento de aviso por WhatsApp, como lo pinta la fila (null si no hay).
+     */
+    private function estadoWhatsapp(Reparacion $reparacion): ?array
+    {
+        return $reparacion->ultimoWhatsapp()->first()?->paraVista();
+    }
+
+    /**
+     * Displays que se ofrecen en los modales: pantallas activas del inventario.
+     */
+    private function consultaDisplays(): Builder
+    {
+        return Producto::activos()->pantallas();
     }
 
     /**
      * Envía el aviso y devuelve los datos para la vista. Nunca lanza excepción:
      * un problema con WhatsApp no debe dañar el cambio de estado que ya se guardó.
      */
-    private function avisarReparacionLista(Reparacion $reparacion, int $userId, bool $forzar = false): ?array
+    private function avisarReparacionLista(Reparacion $reparacion, int $userId): ?array
     {
         try {
             return $this->notificacionService
-                ->notificarReparacionLista($reparacion, $userId, $forzar)
+                ->notificarReparacionLista($reparacion, $userId)
                 ?->paraVista();
         } catch (\Throwable $e) {
+            // Los errores al enviar ya quedan guardados como "fallido" en el servicio;
+            // aquí solo llega lo que impidió hasta guardar el intento.
             report($e);
 
-            return [
-                'estado'   => 'fallido',
-                'etiqueta' => 'WhatsApp ✗ falló',
-                'mensaje'  => 'No se pudo enviar el WhatsApp por un error interno. Intenta de nuevo.',
-            ];
+            return Notificacion::vistaErrorInterno();
         }
     }
 

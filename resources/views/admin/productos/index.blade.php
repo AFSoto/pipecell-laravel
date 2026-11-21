@@ -844,10 +844,8 @@
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
-    // IDs de categorías cuyo nombre contiene "pantalla" (para mostrar campo marco)
-    const categoriasConMarco = @json(
-        $categorias->filter(fn($c) => str_contains(strtolower($c->nombre), 'pantalla'))->pluck('id')->values()
-    );
+    // IDs de las categorías de pantallas (Categoria::esDePantallas), para mostrar el campo marco
+    const categoriasConMarco = @json($categorias->filter->esDePantallas()->pluck('id')->values());
 
     /**
      * Muestra u oculta la sección de marco según si la categoría es de Pantallas.

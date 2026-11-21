@@ -150,13 +150,12 @@ class Producto extends Model
 
     /**
      * Filtra los productos de categorías de pantallas (displays).
-     * Misma convención que los FormRequest de producto: el nombre de la
-     * categoría contiene "pantalla" (ej: "Repuestos - Pantallas").
+     * La regla está en Categoria::scopeDePantallas().
      * Uso: Producto::activos()->pantallas()->get()
      */
     public function scopePantallas($query)
     {
-        return $query->whereHas('categoria', fn ($q) => $q->where('nombre', 'like', '%pantalla%'));
+        return $query->whereHas('categoria', fn ($q) => $q->dePantallas());
     }
 
     // ── Helpers ──
@@ -166,8 +165,7 @@ class Producto extends Model
      */
     public function esPantalla(): bool
     {
-        return $this->categoria !== null
-            && str_contains(mb_strtolower($this->categoria->nombre), 'pantalla');
+        return (bool) $this->categoria?->esDePantallas();
     }
 
     /**

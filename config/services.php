@@ -57,6 +57,11 @@ return [
         'api_version'     => env('WHATSAPP_API_VERSION', 'v26.0'),
         'plantilla_lista' => env('WHATSAPP_PLANTILLA_LISTA', 'reparacion_lista'),
         'idioma'          => env('WHATSAPP_IDIOMA', 'es'),
+
+        // Webhook de estados de entrega (opcional: sin estas dos, los avisos se
+        // envían igual, pero la plataforma no se entera si llegaron)
+        'verify_token'    => env('WHATSAPP_VERIFY_TOKEN'),
+        'app_secret'      => env('WHATSAPP_APP_SECRET'),
     ],
 
 ];

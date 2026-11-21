@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * Repuesto del inventario usado en una reparación (hoy: el display).
  *
+ * costo_unitario guarda el precio de compra del momento, solo como historial:
+ * no se suma al costo de Repuestos de la reparación.
+ *
  * El stock no se toca desde aquí: lo maneja ReparacionService::sincronizarDisplay(),
  * que usa ProductoService::ajustarStock() para dejar el movimiento registrado.
  */
@@ -41,15 +44,5 @@ class ReparacionRepuesto extends Model
     public function producto(): BelongsTo
     {
         return $this->belongsTo(Producto::class);
-    }
-
-    // ── Helpers ──
-
-    /**
-     * Costo total de este repuesto: costo unitario × cantidad.
-     */
-    public function costoTotal(): float
-    {
-        return (float) $this->costo_unitario * $this->cantidad;
     }
 }

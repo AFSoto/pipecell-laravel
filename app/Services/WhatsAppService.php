@@ -24,6 +24,7 @@ class WhatsAppService
     private const ERRORES_CONOCIDOS = [
         190    => 'El token de WhatsApp venció o no es válido. Revisa WHATSAPP_TOKEN.',
         131026 => 'El número no tiene WhatsApp o no puede recibir mensajes.',
+        131049 => 'Meta no lo entregó para no saturar al cliente con mensajes. Intenta más tarde.',
         131030 => 'El número no está en la lista de destinatarios de prueba de Meta.',
         131056 => 'Se enviaron demasiados mensajes seguidos a este número. Intenta más tarde.',
         132000 => 'La cantidad de datos no coincide con la plantilla aprobada en Meta.',
@@ -102,11 +103,18 @@ class WhatsAppService
         return trim(preg_replace('/\s+/u', ' ', (string) $valor));
     }
 
+    /**
+     * Texto en español para un código de error de Meta (null si no es uno conocido).
+     * Lo usan el envío y el webhook de estados de entrega.
+     */
+    public static function mensajePorCodigo(mixed $codigo): ?string
+    {
+        return is_numeric($codigo) ? (self::ERRORES_CONOCIDOS[(int) $codigo] ?? null) : null;
+    }
+
     private function mensajeDeError(Response $respuesta): string
     {
-        $codigo = $respuesta->json('error.code');
-
-        return self::ERRORES_CONOCIDOS[$codigo]
+        return self::mensajePorCodigo($respuesta->json('error.code'))
             ?? $respuesta->json('error.message')
             ?? "WhatsApp respondió con error HTTP {$respuesta->status()}.";
     }

@@ -16,6 +16,14 @@ class Categoria extends Model
 {
     use HasFactory;
 
+    /**
+     * Las categorías de pantallas (displays) se reconocen porque su nombre contiene
+     * esta palabra, sin importar mayúsculas (ej: "Repuestos - Pantallas"). Es la única
+     * definición: la usan productos (campo marco, marca y referencia) y reparaciones
+     * (selector "¿Se usó display?").
+     */
+    public const PALABRA_PANTALLA = 'pantalla';
+
     protected $fillable = [
         'nombre',
         'descripcion',
@@ -44,7 +52,25 @@ class Categoria extends Model
         return $query->where('estado', 'activo');
     }
 
+    /**
+     * Filtra las categorías de pantallas (ver PALABRA_PANTALLA).
+     * LIKE no distingue mayúsculas con la intercalación de MySQL ni en SQLite.
+     * Uso: Categoria::dePantallas()->get()
+     */
+    public function scopeDePantallas($query)
+    {
+        return $query->where('nombre', 'like', '%' . self::PALABRA_PANTALLA . '%');
+    }
+
     // ── Helpers ──
+
+    /**
+     * Indica si es una categoría de pantallas (ver PALABRA_PANTALLA).
+     */
+    public function esDePantallas(): bool
+    {
+        return str_contains(mb_strtolower($this->nombre), self::PALABRA_PANTALLA);
+    }
 
     /**
      * Verifica si la categoría está activa.

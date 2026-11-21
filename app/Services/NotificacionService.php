@@ -6,6 +6,8 @@ use App\Enums\EstadoNotificacion;
 use App\Exceptions\WhatsAppException;
 use App\Models\Notificacion;
 use App\Models\Reparacion;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -27,16 +29,32 @@ class NotificacionService
     /**
      * Avisa por WhatsApp que la reparación está lista para recoger.
      *
-     * @param  bool  $forzar  true desde el botón "Enviar / Reintentar WhatsApp":
-     *                        envía aunque ya exista un aviso enviado.
-     * @return Notificacion|null  null si ya se había avisado y no se forzó
+     * Nunca manda dos veces: si ya hay un aviso enviado, no hace nada. Todo pasa con
+     * la fila de la reparación bloqueada, así dos peticiones al mismo tiempo (dos
+     * personas, o el cambio de estado y el botón) no mandan dos mensajes: la segunda
+     * espera a que termine la primera y encuentra el aviso enviado. El bloqueo dura
+     * lo que tarde Meta en responder (máximo 10 s).
+     *
+     * @return Notificacion|null  null si ya se había avisado
      */
-    public function notificarReparacionLista(Reparacion $reparacion, ?int $userId = null, bool $forzar = false): ?Notificacion
+    public function notificarReparacionLista(Reparacion $reparacion, ?int $userId = null): ?Notificacion
     {
-        if (! $forzar && $this->yaSeAviso($reparacion)) {
-            return null;
-        }
+        return DB::transaction(function () use ($reparacion, $userId) {
+            $reparacion = Reparacion::lockForUpdate()->findOrFail($reparacion->id);
 
+            if ($this->yaSeAviso($reparacion)) {
+                return null;
+            }
+
+            return $this->intentarEnvio($reparacion, $userId);
+        });
+    }
+
+    /**
+     * Un intento de envío: queda registrado como enviado, fallido u omitido.
+     */
+    private function intentarEnvio(Reparacion $reparacion, ?int $userId): Notificacion
+    {
         $base = [
             'reparacion_id' => $reparacion->id,
             'user_id'       => $userId,
@@ -74,7 +92,75 @@ class NotificacionService
             return $this->registrar($base + ['mensaje_id' => $mensajeId], EstadoNotificacion::Enviado);
         } catch (WhatsAppException $e) {
             return $this->registrar($base, EstadoNotificacion::Fallido, $e->getMessage());
+        } catch (\Throwable $e) {
+            // Un error que no viene de Meta (un fallo inesperado de la plataforma o de
+            // la conexión): queda como fallido para que la fila lo muestre y se pueda
+            // reintentar, y el detalle técnico va a laravel.log.
+            report($e);
+
+            return $this->registrar($base, EstadoNotificacion::Fallido, Notificacion::DETALLE_ERROR_INTERNO);
         }
+    }
+
+    /**
+     * Aplica un estado que Meta informa por el webhook a la notificación de ese mensaje:
+     *   delivered → entregado_at
+     *   read      → leido_at (y entregado_at si faltaba)
+     *   failed    → pasa a "fallido" con el motivo, así la fila muestra "Reintentar"
+     *
+     * Nunca retrocede: Meta puede mandar los estados en desorden (un "read" antes
+     * del "delivered"), y un "failed" que llega después de entregado no lo deshace.
+     * Los mensajes que no son de la plataforma se ignoran.
+     *
+     * @param  array  $estado  Un elemento de entry[].changes[].value.statuses[]
+     */
+    public function registrarEstadoDeEntrega(array $estado): void
+    {
+        $mensajeId    = $estado['id'] ?? null;
+        $notificacion = $mensajeId ? Notificacion::where('mensaje_id', $mensajeId)->first() : null;
+
+        if (! $notificacion || $notificacion->estado !== EstadoNotificacion::Enviado) {
+            return;
+        }
+
+        $momento = isset($estado['timestamp']) && is_numeric($estado['timestamp'])
+            ? Carbon::createFromTimestamp((int) $estado['timestamp'], config('app.timezone'))
+            : now();
+
+        switch ($estado['status'] ?? null) {
+            case 'delivered':
+                $notificacion->entregado_at ??= $momento;
+                break;
+
+            case 'read':
+                $notificacion->entregado_at ??= $momento;
+                $notificacion->leido_at     ??= $momento;
+                break;
+
+            case 'failed':
+                if ($notificacion->entregado_at === null) {
+                    $notificacion->estado  = EstadoNotificacion::Fallido;
+                    $notificacion->detalle = Str::limit('Meta no lo pudo entregar: ' . $this->motivoDeFalla($estado), 490);
+                }
+                break;
+        }
+
+        $notificacion->save(); // solo escribe si algo cambió
+    }
+
+    /**
+     * Motivo legible de un "failed" del webhook: el texto conocido para el código
+     * o, si no lo hay, el detalle que manda Meta.
+     */
+    private function motivoDeFalla(array $estado): string
+    {
+        $error = $estado['errors'][0] ?? [];
+
+        return WhatsAppService::mensajePorCodigo($error['code'] ?? null)
+            ?? $error['error_data']['details']
+            ?? $error['message']
+            ?? $error['title']
+            ?? 'Meta no indicó el motivo.';
     }
 
     /**
