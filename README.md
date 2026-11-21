@@ -218,15 +218,15 @@ Las reparaciones nuevas no se insertan solas en la lista: aparecen al recargar.
 
 **Configuración:**
 
-1. Crear una app de **Channels** en [dashboard.pusher.com](https://dashboard.pusher.com) (plan Sandbox, gratis: 100 conexiones simultáneas y 200.000 mensajes al día).
-2. Copiar sus *App Keys* al `.env`:
+1. Crear una app de **Channels** en [dashboard.pusher.com](https://dashboard.pusher.com) (plan Sandbox, gratis: 100 conexiones simultáneas y 200.000 mensajes al día) con el cluster **mt1** (US East, Virginia). Desde Colombia es el que responde más rápido: el tráfico normalmente sale por Miami, así que São Paulo (sa1) queda más lejos en la práctica. El cluster no se puede cambiar después de crear la app.
+2. Llenar el bloque de Pusher del `.env` con sus *App Keys* y cambiar `BROADCAST_CONNECTION` a `pusher`:
 
    ```dotenv
    BROADCAST_CONNECTION=pusher
    PUSHER_APP_ID=
    PUSHER_APP_KEY=
    PUSHER_APP_SECRET=
-   PUSHER_APP_CLUSTER=
+   PUSHER_APP_CLUSTER=mt1
    VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
    VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
    ```
