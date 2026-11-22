@@ -21,6 +21,7 @@
         Si no lo define, muestra "PipeCell" por defecto.
     --}}
     <title>@yield('title', 'PipeCell')</title>
+    <x-favicon />
 
     {{--
         @vite carga Tailwind CSS y JS compilados.

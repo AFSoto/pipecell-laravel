@@ -17,6 +17,7 @@
         <meta name="tiempo-real" content="1">
     @endif
     <title>@yield('title', 'Panel') — PipeCell</title>
+    <x-favicon />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     {{--
