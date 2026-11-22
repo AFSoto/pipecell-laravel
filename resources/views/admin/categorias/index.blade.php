@@ -12,25 +12,6 @@
 
 @section('content')
 
-{{-- ── Mensajes flash ── --}}
-@if (session('success'))
-    <div id="alert-success" class="mb-6 flex items-center gap-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3">
-        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-        </svg>
-        {{ session('success') }}
-    </div>
-@endif
-
-@if (session('error'))
-    <div id="alert-error" class="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
-        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        {{ session('error') }}
-    </div>
-@endif
-
 {{-- ── Header ── --}}
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
     <div>
@@ -284,18 +265,6 @@
         // Enfocar el campo nombre para mejor UX
         setTimeout(() => document.getElementById('editar-nombre').focus(), 50);
     }
-
-    // Auto-ocultar alertas flash después de 4 segundos
-    ['alert-success', 'alert-error'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            setTimeout(() => {
-                el.style.transition = 'opacity 0.5s';
-                el.style.opacity = '0';
-                setTimeout(() => el.remove(), 500);
-            }, 4000);
-        }
-    });
 
     // Si hay errores de validación, re-abrir el modal de creación automáticamente
     // para que el usuario vea los errores sin tener que volver a abrirlo

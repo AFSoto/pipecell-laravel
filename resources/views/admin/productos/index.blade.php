@@ -15,25 +15,6 @@
 
 @section('content')
 
-{{-- ── Mensajes flash ── --}}
-@if (session('success'))
-    <div id="alert-success" class="mb-6 flex items-center gap-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3">
-        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-        </svg>
-        {{ session('success') }}
-    </div>
-@endif
-
-@if (session('error'))
-    <div id="alert-error" class="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
-        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        {{ session('error') }}
-    </div>
-@endif
-
 {{-- ── Header ── --}}
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
     <div>
@@ -1134,14 +1115,17 @@
     // ══════════════════════════════════════
 
     /**
-     * Muestra una notificación toast que desaparece sola después de 3 segundos.
+     * Muestra una notificación flotante que desaparece sola a los 5 segundos.
+     *
+     * Va en el contenedor de avisos del layout (components/avisos-sesion): si salen
+     * varias seguidas se apilan en vez de taparse.
      *
      * @param {string} mensaje Texto a mostrar
      * @param {string} tipo    'success' (verde) o 'error' (rojo)
      */
     function mostrarNotificacion(mensaje, tipo = 'success') {
         const noti = document.createElement('div');
-        noti.className = `fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-sm font-medium transition-all duration-300 transform translate-x-full ${
+        noti.className = `max-w-sm flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-sm font-medium transition-all duration-300 transform translate-x-full ${
             tipo === 'success'
                 ? 'bg-green-50 border border-green-200 text-green-700'
                 : 'bg-red-50 border border-red-200 text-red-700'
@@ -1150,17 +1134,23 @@
         noti.innerHTML = tipo === 'success'
             ? `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-               </svg>${mensaje}`
+               </svg>`
             : `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-               </svg>${mensaje}`;
+               </svg>`;
 
-        document.body.appendChild(noti);
+        // textContent: el mensaje puede venir del servidor
+        const texto = document.createElement('span');
+        texto.textContent = mensaje;
+        noti.appendChild(texto);
+
+        noti.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
+        document.getElementById('contenedor-notificaciones').appendChild(noti);
 
         // Animar entrada desde la derecha
         requestAnimationFrame(() => noti.classList.remove('translate-x-full'));
 
-        // Desaparecer después de 3 segundos
+        // Desaparecer a los 5 segundos
         setTimeout(() => {
             noti.classList.add('translate-x-full');
             setTimeout(() => noti.remove(), 300);
@@ -1388,18 +1378,6 @@
         span.textContent = label;
     }
 
-    // Auto-ocultar alertas flash después de 4 segundos
-    ['alert-success', 'alert-error'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            setTimeout(() => {
-                el.style.transition = 'opacity 0.5s';
-                el.style.opacity    = '0';
-                setTimeout(() => el.remove(), 500);
-            }, 4000);
-        }
-    });
-
     function ocultarErroresCrear() {
         const el = document.getElementById('crear-errores');
         if (!el) return;
@@ -1407,15 +1385,15 @@
         setTimeout(() => el.remove(), 500);
     }
 
-    // Si hay errores de validación, re-abrir el modal y hacer scroll al bloque de errores
+    // Si hay errores de validación, re-abrir el modal y hacer scroll al bloque de errores.
+    // Los errores se quedan hasta cerrarlos con la × o volver a guardar: si se fueran
+    // solos, no daría tiempo de leer qué corregir.
     @if ($errors->any())
         document.addEventListener('DOMContentLoaded', () => {
             const modal = document.getElementById('modal-producto');
             modal.classList.remove('hidden');
             const contenedor = modal.querySelector('.overflow-y-auto');
             if (contenedor) contenedor.scrollTop = 0;
-            // Auto-ocultar errores después de 3 segundos
-            setTimeout(() => ocultarErroresCrear(), 3000);
         });
     @endif
 </script>

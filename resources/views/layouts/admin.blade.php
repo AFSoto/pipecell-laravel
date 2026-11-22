@@ -1,9 +1,10 @@
 {{--
     Layout del panel de administración.
 
-    Sidebar colapsable: modo expandido (w-64) y modo mini (w-20, solo íconos).
-    El estado se guarda en localStorage para que persista entre recargas.
-    En móvil el sidebar se abre como overlay.
+    Sidebar colapsable: modo expandido (16rem) y modo mini (5rem, solo íconos).
+    La preferencia se guarda en localStorage y se aplica en el <head>, antes de dibujar
+    (clase sidebar-mini del <html>); los anchos y márgenes salen del <style>.
+    En pantallas de menos de 1024 px el sidebar se abre encima, como menú.
 --}}
 <!DOCTYPE html>
 <html lang="es">
@@ -18,41 +19,52 @@
     @endif
     <title>@yield('title', 'Panel') — PipeCell</title>
     <x-favicon />
+
+    {{--
+        Sidebar mini: se decide aquí, antes de dibujar la página, para que salga ya
+        cerrado. Si se aplicara al final de la página, se vería abrirse y cerrarse en
+        cada cambio de sección. La preferencia la guarda toggleCollapse().
+    --}}
+    <script>
+        try {
+            if (localStorage.getItem('sidebar-collapsed') === 'true') {
+                document.documentElement.classList.add('sidebar-mini');
+            }
+        } catch (e) {
+            // Sin acceso al almacenamiento: el sidebar queda abierto
+        }
+    </script>
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     {{--
-        Estilos para la transición del sidebar.
-        Definimos las variables de ancho para expandido y colapsado.
-        transition-all hace que el cambio sea suave.
+        Ancho del sidebar y margen del contenido. Salen de aquí y no de JS: la página
+        se dibuja desde el principio como debe quedar.
+        - Menos de 1024 px: el sidebar es un menú que se abre encima, siempre completo,
+          y el contenido va sin margen.
+        - Desde 1024 px: el sidebar queda fijo, abierto (16rem) o mini (5rem, solo íconos).
+        Como depende del ancho de la pantalla, al girar el iPad se acomoda solo.
     --}}
     <style>
-    .sidebar-expanded { width: 16rem; }
-    .sidebar-collapsed { width: 5rem; }
-    .content-expanded { margin-left: 16rem; }
-    .content-collapsed { margin-left: 5rem; }
-    /* Evita flash del sidebar al recargar */
-    #main-content { transition: none; }
-</style>
-<script>
-    // Aplica el margin correcto al contenido antes de que el navegador pinte
-    document.addEventListener('DOMContentLoaded', function() {
-        if (window.innerWidth >= 1024) {
-            const collapsed = localStorage.getItem('sidebar-collapsed') === 'true';
-            const mainContent = document.getElementById('main-content');
-            if (collapsed) {
-                mainContent.classList.remove('content-expanded');
-                mainContent.classList.add('content-collapsed');
-            } else {
-                mainContent.classList.remove('content-collapsed');
-                mainContent.classList.add('content-expanded');
-            }
-            // Activar transiciones después de aplicar el estado inicial
-            setTimeout(() => {
-                mainContent.style.transition = 'margin-left 0.3s';
-            }, 50);
+        /* Reserva el espacio de la barra de scroll aunque la página no tenga scroll:
+           así nada se corre de lado al pasar de una página a otra (en el PC) */
+        html { scrollbar-gutter: stable; }
+
+        #sidebar { width: 16rem; }
+
+        @media (min-width: 1024px) {
+            #main-content { margin-left: 16rem; transition: margin-left .3s; }
+
+            .sidebar-mini #sidebar { width: 5rem; }
+            .sidebar-mini #main-content { margin-left: 5rem; }
+            .sidebar-mini #sidebar .sidebar-text { opacity: 0; width: 0; overflow: hidden; }
+            .sidebar-mini #collapse-icon { transform: rotate(180deg); }
+
+            /* Encabezado: el logo arriba y la flecha debajo (lado a lado no caben) */
+            .sidebar-mini #sidebar-cabecera { flex-direction: column; justify-content: center; }
+            .sidebar-mini #sidebar-cabecera .sidebar-text { display: none; }
         }
-    });
-</script>
+    </style>
 </head>
 <body class="min-h-screen bg-gray-50">
 
@@ -62,15 +74,16 @@
         {{-- SIDEBAR                         --}}
         {{-- ============================== --}}
         <aside id="sidebar"
-               class="fixed inset-y-0 left-0 z-40 bg-[#0f172a] transition-all duration-300 transform -translate-x-full lg:translate-x-0 sidebar-expanded overflow-hidden">
+               class="fixed inset-y-0 left-0 z-40 bg-[#0f172a] transition-all duration-300 transform -translate-x-full lg:translate-x-0 overflow-hidden">
 
             <div class="flex flex-col h-full">
 
-                {{-- Logo + botón colapsar --}}
-                <div class="px-4 py-5 border-b border-white/10 flex items-center justify-between min-h-[4.5rem]">
-                    {{-- Logo expandido --}}
-                    <div class="sidebar-content flex items-center gap-3 overflow-hidden">
-                        <img src="{{ asset('img/logo.png') }}" alt="PipeCell" class="h-10 flex-shrink-0">
+                {{-- Logo + botón colapsar (en modo mini, uno debajo del otro: ver el <style>) --}}
+                <div id="sidebar-cabecera" class="px-4 py-5 border-b border-white/10 flex items-center justify-between gap-2 min-h-[4.5rem]">
+                    {{-- Logo de tamaño fijo: no se corre al cargar ni se deforma en modo mini --}}
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <img src="{{ asset('img/logo-sidebar.png') }}" alt="PipeCell" width="40" height="40"
+                             class="w-10 h-10 max-w-none shrink-0">
                         <div class="sidebar-text whitespace-nowrap">
                             <p class="text-white font-bold text-sm">PipeCell</p>
                             <p class="text-gray-500 text-xs">Panel de control</p>
@@ -113,16 +126,6 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.42 15.17l-5.1-5.1a2.5 2.5 0 010-3.54l.71-.7a2.5 2.5 0 013.54 0l5.1 5.1m-4.25 4.24l4.24-4.24m0 0l5.1 5.1a2.5 2.5 0 010 3.54l-.7.7a2.5 2.5 0 01-3.55 0l-5.1-5.1"/>
                         </svg>
                         <span class="sidebar-text whitespace-nowrap">Reparaciones</span>
-                    </a>
-
-                    {{-- Cajas --}}
-                    <a href="#"
-                       class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-gray-400 hover:bg-white/5 hover:text-white"
-                       title="Cajas">
-                        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                        </svg>
-                        <span class="sidebar-text whitespace-nowrap">Cajas</span>
                     </a>
 
                     {{-- Separador de sección Inventario --}}
@@ -209,7 +212,9 @@
         {{-- ============================== --}}
         {{-- CONTENIDO PRINCIPAL             --}}
         {{-- ============================== --}}
-        <div id="main-content" class="flex-1 transition-all duration-300 lg:content-expanded">
+        {{-- min-w-0: sin esto el contenido crece hasta el ancho de la tabla más ancha y la
+             página entera se sale por la derecha; con esto la tabla se desliza dentro de su tarjeta --}}
+        <div id="main-content" class="flex-1 min-w-0">
 
             {{-- Header --}}
             <header class="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100">
@@ -257,89 +262,30 @@
     </div>
 
     {{--
-        Script del sidebar colapsable.
-        - toggleCollapse(): expande/colapsa en desktop (guarda estado en localStorage)
-        - toggleMobileSidebar(): abre/cierra en móvil como overlay
-        - applySidebarState(): aplica el estado guardado al cargar la página
+        Script del sidebar. El ancho y los márgenes los pone el <style> del head
+        según la clase sidebar-mini del <html>; aquí solo se cambia esa clase.
+        - toggleCollapse(): en pantallas grandes, abre o deja en mini el sidebar y
+          guarda la preferencia (el head la aplica al cargar la siguiente página).
+        - toggleMobileSidebar(): abre o cierra el menú en pantallas chicas.
     --}}
     <script>
-        const sidebar = document.getElementById('sidebar');
-        const mainContent = document.getElementById('main-content');
-        const collapseIcon = document.getElementById('collapse-icon');
-        const sidebarTexts = document.querySelectorAll('.sidebar-text');
-
-        // Aplica el estado guardado al cargar
-        function applySidebarState() {
-            const collapsed = localStorage.getItem('sidebar-collapsed') === 'true';
-            if (collapsed) {
-                collapseSidebar();
-            }
-        }
-
-        // Colapsa el sidebar (solo íconos)
-        function collapseSidebar() {
-            sidebar.classList.remove('sidebar-expanded');
-            sidebar.classList.add('sidebar-collapsed');
-            mainContent.classList.remove('content-expanded');
-            mainContent.classList.add('content-collapsed');
-            collapseIcon.style.transform = 'rotate(180deg)';
-            sidebarTexts.forEach(el => {
-                el.style.opacity = '0';
-                el.style.width = '0';
-                el.style.overflow = 'hidden';
-            });
-        }
-
-        // Expande el sidebar (íconos + texto)
-        function expandSidebar() {
-            sidebar.classList.remove('sidebar-collapsed');
-            sidebar.classList.add('sidebar-expanded');
-            mainContent.classList.remove('content-collapsed');
-            mainContent.classList.add('content-expanded');
-            collapseIcon.style.transform = 'rotate(0deg)';
-            sidebarTexts.forEach(el => {
-                el.style.opacity = '1';
-                el.style.width = 'auto';
-                el.style.overflow = 'visible';
-            });
-        }
-
-        // Toggle desktop: colapsar/expandir
         function toggleCollapse() {
-            const isCollapsed = sidebar.classList.contains('sidebar-collapsed');
-            if (isCollapsed) {
-                expandSidebar();
-                localStorage.setItem('sidebar-collapsed', 'false');
-            } else {
-                collapseSidebar();
-                localStorage.setItem('sidebar-collapsed', 'true');
+            const mini = document.documentElement.classList.toggle('sidebar-mini');
+            try {
+                localStorage.setItem('sidebar-collapsed', mini ? 'true' : 'false');
+            } catch (e) {
+                // Sin acceso al almacenamiento: funciona, pero no se recuerda
             }
         }
 
-        // Toggle móvil: abrir/cerrar como overlay
         function toggleMobileSidebar() {
-    const isHidden = sidebar.classList.contains('-translate-x-full');
-    sidebar.classList.toggle('-translate-x-full');
-    document.getElementById('sidebar-overlay').classList.toggle('hidden');
-
-    if (isHidden) {
-        // Al abrir en móvil: expandir sidebar pero sin tocar el margin del contenido
-        sidebar.classList.remove('sidebar-collapsed');
-        sidebar.classList.add('sidebar-expanded');
-        sidebarTexts.forEach(el => {
-            el.style.opacity = '1';
-            el.style.width = 'auto';
-            el.style.overflow = 'visible';
-        });
-    }
-    // Al cerrar: no hacemos nada con el contenido, el overlay desaparece solo
-}
-
-        // Aplicar estado al cargar (solo en desktop)
-        if (window.innerWidth >= 1024) {
-            applySidebarState();
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+            document.getElementById('sidebar-overlay').classList.toggle('hidden');
         }
     </script>
+
+    {{-- Mensajes de guardado y error: flotan arriba a la derecha --}}
+    <x-avisos-sesion />
 
     @yield('scripts')
 
