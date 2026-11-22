@@ -463,9 +463,16 @@ class ReparacionController extends Controller
                 $request->nota
             );
 
+            // Totales ya calculados: la pantalla los escribe tal cual. Si le sumara el abono
+            // a lo que muestra la fila, lo contaría dos veces cuando el tiempo real ya la
+            // había puesto al día.
+            $reparacion->refresh();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Abono registrado correctamente.',
+                'abonado' => (int) $reparacion->total_abonado,
+                'saldo'   => (int) $reparacion->saldo_pendiente,
             ]);
         } catch (\Exception $e) {
             return response()->json([

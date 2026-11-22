@@ -214,7 +214,17 @@ Las reparaciones nuevas no se insertan solas en la lista: aparecen al recargar.
 
 **Privacidad:** por Pusher solo pasa qué reparación cambió, qué pasó y el primer nombre de quien lo hizo. Los datos del cliente se piden a la plataforma (`GET /admin/reparaciones/sincronizar`).
 
-**Indicador:** en el encabezado, verde "En vivo" o gris "Sin conexión en vivo". Si la tablet se bloquea o pierde el wifi, al volver la pantalla se pone al día sola.
+**Indicador:** en el encabezado de Reparaciones. Las demás páginas todavía no se actualizan solas, así que no lo muestran. Puede verse de tres formas:
+
+- verde "En vivo", solo cuando el canal ya quedó suscrito;
+- gris "Sin conexión en vivo";
+- ámbar "Recarga la página", si la sesión venció.
+
+Al suscribirse, al reconectar o cuando la tablet vuelve del reposo, la pantalla se pone al día sola.
+
+**Sesión:** mientras Reparaciones esté abierta, cada 30 minutos se pone al día lo visible. Ese pedido mantiene viva la sesión (vence a las 2 horas sin actividad), así que la tablet no se cierra sola. Si el iPad estuvo bloqueado más de 2 horas, al volver sale un aviso para recargar.
+
+**Cambios propios:** después de guardar, cobrar, cambiar el estado o enviar el WhatsApp, la pantalla le pide la fila al servidor y descarta las respuestas viejas. Así lo que se ve siempre termina igual a lo guardado, aunque otra persona haya tocado la misma reparación en ese momento.
 
 **Configuración:**
 

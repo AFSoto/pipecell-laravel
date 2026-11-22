@@ -153,8 +153,9 @@ class NotificacionService
 
         $notificacion->save();
 
-        // Las pantallas abiertas cambian el indicador sin recargar (y avisan si no llegó)
-        TiempoReal::avisar(new ReparacionCambio($notificacion->reparacion_id, ReparacionCambio::WHATSAPP, autor: null));
+        // Las pantallas abiertas cambian el indicador sin recargar (y avisan si no llegó).
+        // Lo informa Meta, no una persona: sale sin autor.
+        TiempoReal::avisar(new ReparacionCambio($notificacion->reparacion_id, ReparacionCambio::WHATSAPP, delSistema: true));
     }
 
     /**

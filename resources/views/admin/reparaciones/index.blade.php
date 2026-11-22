@@ -8,6 +8,10 @@
 
 @section('page-title', 'Reparaciones')
 
+{{-- Esta página escucha los avisos en tiempo real: el layout muestra el indicador
+     "En vivo" y resources/js/tiempo-real.js se conecta a Pusher --}}
+@section('tiempo-real', '1')
+
 @section('content')
 
 {{-- Mensajes flash --}}
@@ -848,7 +852,22 @@ function pagarSaldoTotal(reparacionId) {
     }).then((result) => {
         if (!result.isConfirmed) return;
 
-        const btn = fila.querySelector('button[data-btn="pagar-total"]');
+        // Mientras el diálogo estaba abierto pudo cobrar otra persona (la fila se pone al
+        // día sola): si el saldo ya no es el que se confirmó, no se cobra
+        const filaActual  = filaDe(reparacionId);
+        const saldoActual = filaActual ? leerSaldoDeFila(filaActual) : null;
+
+        if (saldoActual !== saldo) {
+            mostrarNotificacion(
+                saldoActual === null ? 'Esta reparación ya no está en la lista. Recarga la página para revisarla.'
+                    : saldoActual <= 0 ? 'Otra persona ya registró el pago: esta reparación quedó pagada.'
+                    : `El saldo cambió: ahora es $${saldoActual.toLocaleString('es-CO')}. Revisa y vuelve a intentar.`,
+                'warning', 6000
+            );
+            return;
+        }
+
+        const btn = filaActual.querySelector('button[data-btn="pagar-total"]');
         if (btn) btn.disabled = true;
 
         fetch(`/admin/reparaciones/${reparacionId}/abono`, {
@@ -864,12 +883,13 @@ function pagarSaldoTotal(reparacionId) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                aplicarPagoEnFila(reparacionId, saldo, 'Pago total del saldo');
+                aplicarPagoEnFila(reparacionId, saldo, 'Pago total del saldo', data);
                 mostrarNotificacion('Saldo pagado en su totalidad');
             } else {
                 mostrarNotificacion('Error: ' + data.message, 'error');
                 if (btn) btn.disabled = false;
             }
+            refrescarFila(reparacionId);
         })
         .catch(() => {
             mostrarNotificacion('Error de conexión', 'error');
@@ -903,10 +923,15 @@ function ocultarAvisoCambioEdicion() {
 
 // "Cargar sus cambios": trae la fila actualizada del servidor y vuelve a llenar el modal.
 // Lo que se había escrito y no se guardó se pierde (es lo que pidió quien tocó el botón).
+// Si no se pudo traer (sin conexión o sin sesión), el modal y el aviso se quedan como estaban.
 async function cargarCambiosEdicion() {
     if (!editReparacionId) return;
 
-    await sincronizarFilas([String(editReparacionId)]);
+    const cargo = await sincronizarFilas([String(editReparacionId)]);
+    if (!cargo) {
+        mostrarNotificacion('No se pudieron cargar los cambios. Revisa la conexión e intenta otra vez.', 'error', 6000);
+        return;
+    }
 
     const boton = editFila?.querySelector('button[onclick="abrirModalEditar(this)"]');
     if (boton) abrirModalEditar(boton);
@@ -966,6 +991,7 @@ function guardarEdicion() {
             actualizarStocksDisplays(data.stocks);
             cerrarModalEditar();
             mostrarNotificacion(data.message);
+            refrescarFila(data.data.id);
         } else if (data.conflicto) {
             // Otra persona la cambió: no se guardó nada; se ofrece cargar sus cambios
             mostrarAvisoCambioEdicion(data.message);
@@ -1066,8 +1092,12 @@ function actualizarFilaEdicion(datos) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
+                // Si mientras tanto el tiempo real reemplazó la fila, la respuesta va a la
+                // que está en pantalla ahora
+                const filaActual = filaDe(reparacionId) || fila;
+
                 // Actualizar el data-estado de la fila (para que los filtros funcionen)
-                fila.dataset.estado = nuevoEstado;
+                filaActual.dataset.estado = nuevoEstado;
 
                 // Actualizar contadores sin recargar
                 actualizarContadores(estadoAnterior, nuevoEstado);
@@ -1078,7 +1108,7 @@ function actualizarFilaEdicion(datos) {
                 // Aviso por WhatsApp: el intento nuevo solo viene al pasar de "En proceso"
                 // a "Arreglado"; el estado actual viene siempre, y con el nuevo estado de
                 // la fila se muestra u oculta el botón "Enviar WhatsApp".
-                aplicarRespuestaWhatsapp(fila, data);
+                aplicarRespuestaWhatsapp(filaActual, data);
 
                 // ── Animación de desaparición si hay filtro de estado activo ──
                 //
@@ -1096,7 +1126,7 @@ function actualizarFilaEdicion(datos) {
                     && filtroActivo !== nuevoEstado;
 
                 if (debeDesaparecer) {
-                    desvanecerFila(fila);
+                    desvanecerFila(filaActual);
                 } else {
                     // Sin filtro activo o el estado coincide con el filtro:
                     // solo quitamos el anillo de feedback visual después de 1 segundo
@@ -1104,6 +1134,9 @@ function actualizarFilaEdicion(datos) {
                         select.classList.remove('ring-2', 'ring-green-400');
                     }, 1000);
                 }
+
+                // El servidor tiene la última palabra: fila y contadores exactos
+                refrescarFila(reparacionId);
 
             } else {
                 // Si falló, revertir el select al valor anterior
@@ -1146,6 +1179,9 @@ function actualizarFilaEdicion(datos) {
      * esté configurada en el elemento.
      */
     function desvanecerFila(fila) {
+        // Marca: el tiempo real no la reemplaza mientras se va (no reaparece de golpe)
+        fila.dataset.saliendo = '1';
+
         // Fase 1 — fundido: opacity 0 en 300ms
         fila.style.transition = 'opacity 0.3s ease';
         fila.style.opacity    = '0';
@@ -1316,10 +1352,11 @@ function actualizarFilaEdicion(datos) {
      * Botón "Enviar / Reintentar WhatsApp" de las filas en "Arreglado".
      */
     function enviarWhatsapp(fila, boton) {
+        const id = fila.dataset.id;
         boton.disabled = true;
         boton.textContent = 'Enviando...';
 
-        fetch(`/admin/reparaciones/${fila.dataset.id}/whatsapp`, {
+        fetch(`/admin/reparaciones/${id}/whatsapp`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1330,19 +1367,25 @@ function actualizarFilaEdicion(datos) {
         })
         .then(res => res.json())
         .then(data => {
+            // Enviar tarda unos segundos: si mientras tanto el tiempo real reemplazó la
+            // fila, la respuesta va a la que está en pantalla ahora
+            const filaActual = filaDe(id) || fila;
+
             if (data.success) {
                 // Si ya se había enviado (por ejemplo desde otra pantalla), no hay intento
                 // nuevo: la fila se pone al día y se explica por qué no salió otro mensaje.
-                aplicarRespuestaWhatsapp(fila, data);
+                aplicarRespuestaWhatsapp(filaActual, data);
                 if (!data.notificacion && data.message) mostrarNotificacion(data.message, 'warning', 6000);
             } else {
                 mostrarNotificacion(data.message || 'No se pudo enviar el WhatsApp', 'error');
-                pintarWhatsapp(fila);
+                pintarWhatsapp(filaActual);
             }
+
+            refrescarFila(id);
         })
         .catch(() => {
             mostrarNotificacion('Error de conexión', 'error');
-            pintarWhatsapp(fila);
+            pintarWhatsapp(filaDe(id) || fila);
         });
     }
 
@@ -1510,20 +1553,26 @@ function actualizarFilaEdicion(datos) {
     }
 
     // Aplica un pago ya confirmado por el backend sobre la fila de la tabla:
-    // recalcula abonado/saldo, muestra u oculta los botones de pago y mantiene
+    // escribe el abonado y el saldo, muestra u oculta los botones de pago y mantiene
     // el data-edit al día para que el modal de detalle reabra con cifras correctas.
     // Reutilizada por guardarAbono() (abono parcial) y pagarSaldoTotal() (pago total).
-    function aplicarPagoEnFila(reparacionId, montoNum, nota) {
-    const fila = document.querySelector(`tr[data-id="${reparacionId}"]`);
+    // Después se llama refrescarFila(): el servidor confirma la fila completa.
+    function aplicarPagoEnFila(reparacionId, montoNum, nota, totales = {}) {
+    const fila = filaDe(reparacionId);
     if (!fila) return;
 
     const celdaAbonado = fila.querySelector('[data-celda="abonado"]');
     const celdaSaldo   = fila.querySelector('[data-celda="saldo"]');
 
-    const abonadoActual = leerMonto(fila, 'abonado');
-    const valorTotal    = leerMonto(fila, 'valor');
-    const nuevoAbonado  = abonadoActual + parseInt(montoNum);
-    const nuevoSaldo    = valorTotal - nuevoAbonado;
+    // El servidor manda el abonado y el saldo ya calculados y se escriben tal cual.
+    // Sumarle el abono a la celda lo contaría dos veces si el tiempo real ya había
+    // puesto la fila al día. (La suma queda solo por si la respuesta no los trae.)
+    const nuevoAbonado = Number.isFinite(totales.abonado)
+        ? totales.abonado
+        : leerMonto(fila, 'abonado') + parseInt(montoNum);
+    const nuevoSaldo = Number.isFinite(totales.saldo)
+        ? totales.saldo
+        : leerMonto(fila, 'valor') - nuevoAbonado;
 
     celdaAbonado.textContent = '$' + nuevoAbonado.toLocaleString('es-CO');
     celdaSaldo.innerHTML = `<span class="${nuevoSaldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">$${nuevoSaldo.toLocaleString('es-CO')}</span>`;
@@ -1572,11 +1621,13 @@ function actualizarFilaEdicion(datos) {
     .then(data => {
         if (data.success) {
             cerrarModalAbono();
-            aplicarPagoEnFila(reparacionId, monto, nota);
+            aplicarPagoEnFila(reparacionId, monto, nota, data);
             mostrarNotificacion('Abono registrado correctamente');
         } else {
             mostrarNotificacion('Error: ' + data.message, 'error');
         }
+        // Si se rechazó porque otra persona ya cobró, el modal abierto muestra el saldo nuevo
+        refrescarFila(reparacionId);
     })
     .catch(() => mostrarNotificacion('Error de conexión', 'error'));
 }
@@ -1697,33 +1748,114 @@ function actualizarFilaEdicion(datos) {
     // Se creó una caja nueva: solo hace falta la lista de cajas libres
     window.addEventListener('tiempo-real:cajas', () => sincronizarFilas([]));
 
-    // Reconexión, o la tablet volvió del reposo: se pudieron perder avisos. Se pone al
-    // día todo lo visible, sin avisos flotantes (son cambios de hace rato).
-    window.addEventListener('tiempo-real:ponerse-al-dia', () => {
-        sincronizarFilas(Array.from(document.querySelectorAll('tr.reparacion-row'), fila => fila.dataset.id));
+    // El canal se acaba de suscribir (también después de reconectar), o la tablet volvió
+    // del reposo: se pudieron perder avisos. Se pone al día todo lo visible, sin avisos
+    // flotantes (son cambios de hace rato).
+    window.addEventListener('tiempo-real:ponerse-al-dia', ponerseAlDia);
+
+    // Mantener la sesión viva: cada 30 minutos, mientras la página esté abierta, se pone
+    // al día lo visible. Ese pedido renueva la sesión en el servidor (vence a las 2 horas
+    // sin actividad) y de paso recoge cualquier aviso perdido. Funciona con o sin Pusher.
+    // Si el iPad se bloquea, el temporizador se pausa: si la sesión vence mientras tanto,
+    // al volver sale el aviso para recargar.
+    setInterval(ponerseAlDia, 30 * 60 * 1000);
+
+    // La sesión venció (lo detecta tiempo-real.js al suscribirse, o sincronizarFilas al
+    // pedir filas). Sin sesión la pantalla ya no se pone al día: se avisa una sola vez.
+    let avisoSesionMostrado = false;
+
+    window.addEventListener('tiempo-real:sesion-vencida', () => {
+        if (avisoSesionMostrado) return;
+        avisoSesionMostrado = true;
+
+        mostrarNotificacion(
+            'Tu sesión venció. Toca aquí para recargar y volver a ver los cambios de los demás.',
+            'warning', 0, { alTocar: () => window.location.reload() }
+        );
     });
+
+    // Máximo de filas por pedido: el mismo límite de ReparacionController::sincronizar()
+    const MAXIMO_FILAS_POR_PEDIDO = 50;
+
+    /** Pone al día todas las filas visibles, en grupos de 50 (una búsqueda no tiene paginación). */
+    function ponerseAlDia() {
+        const ids = Array.from(document.querySelectorAll('tr.reparacion-row'), fila => fila.dataset.id);
+
+        // Sin filas igual se piden contadores y cajas libres (y se renueva la sesión)
+        if (!ids.length) {
+            sincronizarFilas([]);
+            return;
+        }
+
+        for (let i = 0; i < ids.length; i += MAXIMO_FILAS_POR_PEDIDO) {
+            sincronizarFilas(ids.slice(i, i + MAXIMO_FILAS_POR_PEDIDO));
+        }
+    }
+
+    // Cada pedido a /sincronizar lleva un número, y por fila se guarda el último número
+    // que la pidió. Una respuesta más vieja no toca la fila: pudo salir antes de un cambio
+    // propio y llegar después. Contadores y cajas, igual: nunca se pintan unos más viejos.
+    let numeroPedido = 0;
+    let ultimoPedidoPintado = 0;
+    const ultimoPedidoPorFila = new Map();   // id → número del último pedido que la incluyó
 
     /**
      * Pide al servidor cómo están ahora esas filas (más contadores y cajas libres) y lo aplica.
-     * avisos: Map id → avisos de Pusher que lo causaron (vacío al ponerse al día).
+     * avisos: Map id → avisos de Pusher que lo causaron (vacío al ponerse al día o al refrescar).
+     * opciones.sinAvisosFlotantes: reintento de una fila aplazada (sus avisos ya salieron).
+     * Devuelve true si el servidor respondió bien.
      */
-    async function sincronizarFilas(ids, avisos = new Map()) {
+    async function sincronizarFilas(ids, avisos = new Map(), opciones = {}) {
+        const numero = ++numeroPedido;
+        ids.forEach(id => ultimoPedidoPorFila.set(String(id), numero));
+
+        let data;
         try {
             const respuesta = await fetch(`/admin/reparaciones/sincronizar?ids=${encodeURIComponent(ids.join(','))}`, {
                 headers: { 'Accept': 'application/json' },
             });
-            if (!respuesta.ok) return;
 
-            const data = await respuesta.json();
+            // Sin sesión el servidor responde 401 (o 419): se avisa en vez de fallar callado
+            const sinSesion = respuesta.status === 401 || respuesta.status === 419
+                || (respuesta.redirected && new URL(respuesta.url).pathname === '/login');
 
-            Object.entries(data.filas || {}).forEach(([id, html]) => {
-                if (html) aplicarFilaRemota(id, html, avisos.get(id) || []);
-            });
-            pintarContadores(data.contadores);
-            aplicarCajasLibres(data.cajas_libres);
+            if (sinSesion) {
+                window.dispatchEvent(new CustomEvent('tiempo-real:sesion-vencida'));
+                return false;
+            }
+            if (!respuesta.ok) return false;
+
+            data = await respuesta.json();
         } catch (error) {
             // Sin conexión: la pantalla se pone al día sola al reconectar
+            return false;
         }
+
+        Object.entries(data.filas || {}).forEach(([id, html]) => {
+            if (!html) return;
+
+            // Si la fila ya se pidió otra vez, esta respuesta es vieja: solo salen sus avisos
+            const vigente = ultimoPedidoPorFila.get(id) === numero;
+            aplicarFilaRemota(id, html, avisos.get(id) || [], { ...opciones, soloAvisos: !vigente });
+        });
+
+        if (numero > ultimoPedidoPintado) {
+            ultimoPedidoPintado = numero;
+            pintarContadores(data.contadores);
+            aplicarCajasLibres(data.cajas_libres);
+        }
+
+        return true;
+    }
+
+    /** Vuelve a pedir una fila después de un cambio propio: el servidor tiene la última palabra. */
+    function refrescarFila(id) {
+        return sincronizarFilas([String(id)]);
+    }
+
+    /** La fila que está en pantalla ahora para esa reparación (el tiempo real pudo reemplazarla). */
+    function filaDe(id) {
+        return document.querySelector(`tr[data-id="${id}"]`);
     }
 
     /** Convierte el HTML de una fila que mandó el servidor en un elemento <tr>. */
@@ -1747,23 +1879,30 @@ function actualizarFilaEdicion(datos) {
      * Aplica la versión nueva de una fila: la reemplaza, la resalta, pone al día los
      * modales abiertos y la saca del filtro si ya no corresponde. Si la fila no está
      * en esta página, solo salen los avisos flotantes.
+     * opciones.soloAvisos: respuesta vieja (la fila ya se pidió otra vez): no se toca.
+     * opciones.sinAvisosFlotantes: reintento de una fila aplazada: sus avisos ya salieron.
      */
-    function aplicarFilaRemota(id, html, avisos) {
+    function aplicarFilaRemota(id, html, avisos, { soloAvisos = false, sinAvisosFlotantes = false } = {}) {
         const nueva = crearFila(html);
         if (!nueva) return;
 
         const datos  = JSON.parse(nueva.dataset.edit);
         const autor  = avisos.map(aviso => aviso.autor).filter(Boolean).pop() || null;
-        const actual = document.querySelector(`tr[data-id="${id}"]`);
+        const actual = filaDe(id);
 
-        mostrarAvisosDeOtros(avisos, nueva, datos, Boolean(actual));
+        if (!sinAvisosFlotantes) mostrarAvisosDeOtros(avisos, nueva, datos, Boolean(actual));
 
-        if (!actual) return;
+        // Respuesta vieja, fila que no está en esta página o que se está yendo del filtro
+        if (soloAvisos || !actual || actual.dataset.saliendo) return;
 
-        // Alguien está usando esa fila (por ejemplo, el selector de estado abierto en la
-        // tablet): se espera a que termine y se vuelve a pedir
-        if (actual.contains(document.activeElement)) {
-            actual.addEventListener('focusout', () => setTimeout(() => sincronizarFilas([id]), 0), { once: true });
+        // Alguien está usando un control de esa fila (por ejemplo, el selector de estado
+        // abierto en la tablet): se espera a que termine. Un botón con foco no cuenta: en
+        // el PC, Editar o Abono se quedan con el foco detrás del modal.
+        const enUso = actual.contains(document.activeElement)
+            && document.activeElement.matches('select, input, textarea');
+
+        if (enUso) {
+            aplazarFila(id, avisos, actual);
             return;
         }
 
@@ -1774,6 +1913,28 @@ function actualizarFilaEdicion(datos) {
         if (avisos.length) resaltarFila(nueva, autor);
         ponerAlDiaModalesAbiertos(id, nueva, datos, avisos, autor);
         revisarSalidaDeFiltro(nueva);
+    }
+
+    const avisosAplazados = new Map();   // id → { fila, avisos } de una fila que se estaba usando
+
+    /**
+     * Espera a que se deje de usar la fila y la vuelve a pedir. El reintento conserva quién
+     * hizo el cambio (resaltado y aviso del modal) sin repetir los avisos flotantes.
+     */
+    function aplazarFila(id, avisos, fila) {
+        const esperando = avisosAplazados.get(id);
+        if (esperando && esperando.fila === fila) {
+            esperando.avisos.push(...avisos);   // ya hay un reintento esperando esa fila
+            return;
+        }
+
+        avisosAplazados.set(id, { fila, avisos: [...avisos] });
+
+        fila.addEventListener('focusout', () => setTimeout(() => {
+            const pendientes = avisosAplazados.get(id)?.avisos || [];
+            avisosAplazados.delete(id);
+            sincronizarFilas([id], new Map([[id, pendientes]]), { sinAvisosFlotantes: true });
+        }, 0), { once: true });
     }
 
     /** Fondo amarillo suave por 2 s y, al pasar el cursor, quién hizo el cambio. */
@@ -1874,8 +2035,8 @@ function actualizarFilaEdicion(datos) {
         if (!filtro || filtro === 'todos' || fila.dataset.estado === filtro) return;
 
         setTimeout(() => {
-            const actual = document.querySelector(`tr[data-id="${fila.dataset.id}"]`);
-            if (!actual || actual.dataset.estado === filtro) return;
+            const actual = filaDe(fila.dataset.id);
+            if (!actual || actual.dataset.saliendo || actual.dataset.estado === filtro) return;
             if (modalEditarAbiertoPara(actual.dataset.id) || modalAbonoAbiertoPara(actual.dataset.id)) return;
 
             desvanecerFila(actual);

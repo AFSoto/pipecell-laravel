@@ -27,19 +27,22 @@ class ReparacionCambio implements ShouldBroadcastNow
     public const ABONO       = 'abono';
     public const WHATSAPP    = 'whatsapp';
 
-    /** Primer nombre de quien hizo el cambio (null si fue el webhook de Meta). */
+    /** Primer nombre de quien hizo el cambio (null si lo hizo el sistema, como el webhook de Meta). */
     public ?string $autor;
 
     /**
-     * @param  string|null  $estado  Estado nuevo, solo cuando $accion es ESTADO
+     * @param  string|null  $estado      Estado nuevo, solo cuando $accion es ESTADO
+     * @param  string|null  $autor       Quién lo hizo; si no se pasa, el usuario con sesión
+     * @param  bool         $delSistema  Lo hizo el sistema: sale sin autor aunque haya sesión
      */
     public function __construct(
         public int $reparacionId,
         public string $accion,
         public ?string $estado = null,
         ?string $autor = null,
+        bool $delSistema = false,
     ) {
-        $nombre      = $autor ?? auth()->user()?->nombre;
+        $nombre      = $delSistema ? null : ($autor ?? auth()->user()?->nombre);
         $this->autor = $nombre !== null ? Str::before(trim($nombre), ' ') : null;
     }
 

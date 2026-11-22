@@ -11,6 +11,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {{-- Solo las páginas que escuchan los avisos en tiempo real (@section('tiempo-real')):
+         resources/js/tiempo-real.js se conecta a Pusher si encuentra esta meta --}}
+    @hasSection('tiempo-real')
+        <meta name="tiempo-real" content="1">
+    @endif
     <title>@yield('title', 'Panel') — PipeCell</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
@@ -221,12 +226,16 @@
                     </h1>
 
                     <div class="flex items-center gap-4">
-                        {{-- Tiempo real: lo pinta resources/js/tiempo-real.js (verde "En vivo" o gris) --}}
-                        <span id="indicador-en-vivo" role="status" aria-live="polite"
-                              class="hidden flex items-center gap-1.5 text-xs font-medium text-gray-500 select-none">
-                            <span data-punto class="w-2 h-2 rounded-full"></span>
-                            <span data-texto></span>
-                        </span>
+                        {{-- Tiempo real: lo pinta resources/js/tiempo-real.js (verde "En vivo",
+                             gris sin conexión, ámbar si la sesión venció). Solo en las páginas
+                             que escuchan los avisos: en las demás diría "En vivo" sin serlo --}}
+                        @hasSection('tiempo-real')
+                            <span id="indicador-en-vivo" role="status" aria-live="polite"
+                                  class="hidden items-center gap-1.5 text-xs font-medium text-gray-500 select-none">
+                                <span data-punto class="w-2 h-2 rounded-full"></span>
+                                <span data-texto></span>
+                            </span>
+                        @endif
 
                         <div class="hidden sm:flex items-center gap-2 text-sm text-gray-500">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
 
@@ -58,6 +59,34 @@ class TiempoRealTest extends TestCase
     private function original(Reparacion $reparacion): array
     {
         return $reparacion->fresh()->load('repuestos.producto', 'abonos')->datosEdicion();
+    }
+
+    /** Aviso por WhatsApp ya enviado, esperando que Meta informe la entrega. */
+    private function notificacionEnviada(Reparacion $reparacion): Notificacion
+    {
+        return Notificacion::create([
+            'reparacion_id' => $reparacion->id,
+            'canal'         => Notificacion::CANAL_WHATSAPP,
+            'tipo'          => Notificacion::TIPO_REPARACION_LISTA,
+            'telefono'      => '310 123 4567',
+            'estado'        => 'enviado',
+            'mensaje_id'    => 'wamid.PRUEBA',
+        ]);
+    }
+
+    /** Lo que manda el webhook de Meta (firmado) cuando cambia la entrega de ese mensaje. */
+    private function webhookDeEntrega(string $estado): TestResponse
+    {
+        config(['services.whatsapp.app_secret' => 'secreto']);
+
+        $cuerpo = json_encode(['entry' => [['changes' => [['field' => 'messages', 'value' => [
+            'statuses' => [['id' => 'wamid.PRUEBA', 'status' => $estado, 'timestamp' => '1763740800']],
+        ]]]]]]);
+
+        return $this->call('POST', route('webhooks.whatsapp.recibir'), [], [], [], [
+            'CONTENT_TYPE'             => 'application/json',
+            'HTTP_X_HUB_SIGNATURE_256' => 'sha256=' . hash_hmac('sha256', $cuerpo, 'secreto'),
+        ], $cuerpo);
     }
 
     // ── Avisos ──
@@ -115,26 +144,11 @@ class TiempoRealTest extends TestCase
     public function test_el_webhook_de_meta_avisa_cuando_cambia_la_entrega(): void
     {
         $this->fakeAvisos();
-        config(['services.whatsapp.app_secret' => 'secreto']);
         $reparacion = $this->crearReparacion($this->crearUsuario());
-        Notificacion::create([
-            'reparacion_id' => $reparacion->id,
-            'canal'         => Notificacion::CANAL_WHATSAPP,
-            'tipo'          => Notificacion::TIPO_REPARACION_LISTA,
-            'telefono'      => '310 123 4567',
-            'estado'        => 'enviado',
-            'mensaje_id'    => 'wamid.PRUEBA',
-        ]);
+        $this->notificacionEnviada($reparacion);
         Event::fake([ReparacionCambio::class]); // olvidar los avisos de crear
 
-        $cuerpo = json_encode(['entry' => [['changes' => [['field' => 'messages', 'value' => [
-            'statuses' => [['id' => 'wamid.PRUEBA', 'status' => 'delivered', 'timestamp' => '1763740800']],
-        ]]]]]]);
-        $firma = 'sha256=' . hash_hmac('sha256', $cuerpo, 'secreto');
-
-        $this->call('POST', route('webhooks.whatsapp.recibir'), [], [], [], [
-            'CONTENT_TYPE' => 'application/json', 'HTTP_X_HUB_SIGNATURE_256' => $firma,
-        ], $cuerpo)->assertOk();
+        $this->webhookDeEntrega('delivered')->assertOk();
 
         // El webhook no tiene usuario: el aviso va sin autor y le llega a todas las pantallas
         Event::assertDispatched(ReparacionCambio::class, fn (ReparacionCambio $aviso) => $aviso->accion === ReparacionCambio::WHATSAPP
@@ -143,10 +157,26 @@ class TiempoRealTest extends TestCase
 
         // El mismo estado repetido no cambia nada: no vuelve a avisar
         Event::fake([ReparacionCambio::class]);
-        $this->call('POST', route('webhooks.whatsapp.recibir'), [], [], [], [
-            'CONTENT_TYPE' => 'application/json', 'HTTP_X_HUB_SIGNATURE_256' => $firma,
-        ], $cuerpo)->assertOk();
+        $this->webhookDeEntrega('delivered')->assertOk();
         Event::assertNotDispatched(ReparacionCambio::class);
+    }
+
+    public function test_el_aviso_de_meta_sale_sin_autor_aunque_haya_alguien_con_sesion(): void
+    {
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+        $this->notificacionEnviada($reparacion);
+        Event::fake([ReparacionCambio::class]);
+
+        // Lo informa Meta, no la persona que tiene la sesión abierta
+        $this->actingAs($usuario);
+        $this->webhookDeEntrega('delivered')->assertOk();
+
+        Event::assertDispatched(ReparacionCambio::class, fn (ReparacionCambio $aviso) => $aviso->accion === ReparacionCambio::WHATSAPP
+            && $aviso->autor === null);
+
+        // Un aviso normal, en cambio, sí lleva el primer nombre de quien tiene la sesión
+        $this->assertSame('Admin', (new ReparacionCambio($reparacion->id, ReparacionCambio::ABONO))->autor);
     }
 
     public function test_el_aviso_no_lleva_datos_del_cliente(): void
@@ -349,5 +379,35 @@ class TiempoRealTest extends TestCase
         )->assertOk();
 
         $this->assertSame('Xiaomi', $reparacion->fresh()->marca);
+    }
+
+    public function test_datos_originales_con_listas_adentro_dan_error_de_validacion_y_no_500(): void
+    {
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        // Solo pasa con una petición armada a mano: la pantalla manda valores simples
+        $this->actingAs($usuario)->putJson(route('admin.reparaciones.update', $reparacion),
+            $this->datosEdicion($reparacion, ['original' => ['nombre_cliente' => ['x']]])
+        )->assertStatus(422)
+            ->assertJsonValidationErrors('original.nombre_cliente');
+
+        $this->assertSame('Juan Pérez', $reparacion->fresh()->nombre_cliente);
+    }
+
+    // ── Respuestas que la pantalla escribe tal cual ──
+
+    public function test_el_abono_responde_el_abonado_y_el_saldo_ya_calculados(): void
+    {
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario); // valor 150.000, abono 50.000
+
+        // La pantalla escribe estos totales tal cual: si le sumara el abono a lo que muestra
+        // la fila, lo contaría dos veces cuando el tiempo real ya la había puesto al día
+        $this->actingAs($usuario)
+            ->postJson(route('admin.reparaciones.registrarAbono', $reparacion), ['monto' => 30000])
+            ->assertOk()
+            ->assertJsonPath('abonado', 80000)
+            ->assertJsonPath('saldo', 70000);
     }
 }

@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\ValidaDisplayUsado;
+use App\Models\Reparacion;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -67,7 +69,26 @@ class UpdateReparacionRequest extends FormRequest
             // Si otra persona cambió alguno de esos campos, no se guarda (409).
             // Opcional: las páginas abiertas antes de esta versión no lo envían.
             'original'         => ['sometimes', 'nullable', 'array'],
+            ...$this->reglasOriginal(),
         ];
+    }
+
+    /**
+     * Los campos de 'original' que se comparan (Reparacion::CAMPOS_EDITABLES) tienen que
+     * ser valores simples: texto, número, sí/no o vacío. Uno con listas adentro solo llega
+     * en una petición armada a mano y rompería la comparación (error 500).
+     */
+    private function reglasOriginal(): array
+    {
+        $valorSimple = function (string $atributo, mixed $valor, Closure $fallar) {
+            if (! is_scalar($valor)) {
+                $fallar('Los datos con que se abrió la reparación no son válidos. Recarga la página.');
+            }
+        };
+
+        return collect(Reparacion::CAMPOS_EDITABLES)
+            ->mapWithKeys(fn (string $campo) => ["original.{$campo}" => ['nullable', $valorSimple]])
+            ->all();
     }
 
     public function messages(): array
