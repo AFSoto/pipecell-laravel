@@ -3,7 +3,10 @@
 
     Incluye:
     - Filtros por categoría, búsqueda de texto y stock bajo
-    - Grid de cards con imagen, precio, stock y acciones
+    - Productos en tarjetas (12 por página) o en lista con miniatura (100 por página).
+      Cada equipo elige la suya: ver ProductoController::vistaElegida(). Se dibuja solo
+      la vista elegida (partials/tarjeta o partials/fila), con las piezas compartidas
+      partials/stock, partials/etiquetas y partials/acciones
     - Modal para crear producto (con subida de imágenes múltiples y preview)
     - Modal para editar producto (con gestión de imágenes existentes vía AJAX)
     - Paginación que mantiene los filtros activos
@@ -97,6 +100,25 @@
                 Limpiar filtros
             </a>
         @endif
+
+        {{-- Vista: tarjetas o lista. Son enlaces: conservan los filtros y vuelven a la
+             página 1 (cambia cuántos van por página). El controlador la recuerda. --}}
+        <div class="ml-auto inline-flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl"
+             role="group" aria-label="Vista">
+            @foreach ([
+                'tarjetas' => ['Ver como tarjetas', 'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z'],
+                'lista'    => ['Ver como lista', 'M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z'],
+            ] as $opcion => [$titulo, $icono])
+                <a href="{{ request()->fullUrlWithQuery(['vista' => $opcion, 'page' => null]) }}"
+                   title="{{ $titulo }}" aria-label="{{ $titulo }}"
+                   @if ($vista === $opcion) aria-current="true" @endif
+                   class="p-2 rounded-lg transition {{ $vista === $opcion ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50' }}">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ $icono }}"/>
+                    </svg>
+                </a>
+            @endforeach
+        </div>
     </div>
 </form>
 
@@ -116,155 +138,37 @@
     </p>
 @endif
 
-{{-- ── Grid de productos ── --}}
+{{-- ── Productos: se dibuja solo la vista elegida (tarjetas o lista) ── --}}
 @if ($productos->isNotEmpty())
-    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        @foreach ($productos as $producto)
-            @php
-                // Determinar color del semáforo de stock
-                if ($producto->stock === 0) {
-                    $stockColor = 'text-red-600';
-                    $stockLabel = 'Sin stock';
-                } elseif ($producto->stock < $producto->stock_minimo) {
-                    $stockColor = 'text-red-600';
-                    $stockLabel = $producto->stock . ' ' . ($producto->stock === 1 ? 'unidad' : 'unidades');
-                } elseif ($producto->stock == $producto->stock_minimo) {
-                    $stockColor = 'text-amber-600';
-                    $stockLabel = $producto->stock . ' ' . ($producto->stock === 1 ? 'unidad' : 'unidades');
-                } else {
-                    $stockColor = 'text-green-600';
-                    $stockLabel = $producto->stock . ' ' . ($producto->stock === 1 ? 'unidad' : 'unidades');
-                }
-            @endphp
-
-            <div class="bg-white rounded-2xl border border-gray-100 hover:shadow-lg transition overflow-hidden group">
-
-                {{-- Imagen del producto --}}
-                <div class="relative aspect-square bg-gray-50">
-                    @if ($producto->imagenPrincipal)
-                        <img src="{{ asset('storage/' . $producto->imagenPrincipal->path) }}"
-                             alt="{{ $producto->nombre }}"
-                             class="w-full h-full object-cover">
-                    @else
-                        {{-- Placeholder cuando no hay imagen --}}
-                        <div class="w-full h-full flex items-center justify-center">
-                            <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                            </svg>
-                        </div>
-                    @endif
-
-                    {{-- Badge de categoría en la esquina superior --}}
-                    <span class="absolute top-2 left-2 text-xs font-medium px-2 py-0.5 bg-white/90 text-gray-600 rounded-full shadow-sm">
-                        {{ $producto->categoria->nombre }}
-                    </span>
-                </div>
-
-                {{-- Información del producto --}}
-                <div class="p-4">
-                    <h3 class="font-semibold text-gray-900 text-sm leading-snug line-clamp-1">
-                        {{ $producto->nombre }}
-                    </h3>
-
-                    @if ($producto->codigo)
-                        <p class="text-xs text-gray-400 font-mono mt-0.5">{{ $producto->codigo }}</p>
-                    @endif
-
-                    {{-- Etiquetas de tipo y marco --}}
-                    @if ($producto->tipoProducto || $producto->marco !== null)
-                        <div class="flex flex-wrap gap-1 mt-1.5">
-                            @if ($producto->tipoProducto)
-                                <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
-                                    {{ $producto->tipoProducto->nombre }}
-                                </span>
-                            @endif
-                            @if ($producto->marco === true)
-                                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 bg-violet-600 text-white rounded-full">
-                                    Con marco
-                                </span>
-                            @elseif ($producto->marco === false)
-                                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 bg-slate-400 text-white rounded-full">
-                                    Sin marco
-                                </span>
-                            @endif
-                        </div>
-                    @endif
-
-                    {{-- Precio de venta --}}
-                    <p class="text-base font-bold text-gray-900 mt-2">
-                        ${{ number_format($producto->precio_venta, 0, ',', '.') }}
-                    </p>
-
-                    {{-- Precio de compra tachado (referencia de costo) --}}
-                    <p class="text-xs text-gray-400 line-through">
-                        ${{ number_format($producto->precio_compra, 0, ',', '.') }}
-                    </p>
-
-                    {{-- Stock con semáforo de color (clickeable para ajuste rápido) --}}
-                    <button id="stock-display-{{ $producto->id }}"
-                            onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre))"
-                            class="group flex items-center gap-1.5 mt-2 hover:opacity-75 transition text-left"
-                            title="Ajustar stock">
-                        <span class="text-xs font-medium {{ $stockColor }}">{{ $stockLabel }}</span>
-                        <svg class="w-3 h-3 text-gray-300 opacity-0 group-hover:opacity-100 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                        </svg>
-                    </button>
-
-                    {{-- Botones de acción --}}
-                    <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
-                        {{-- Botón editar. @js() escapa comillas y saltos de línea para JavaScript --}}
-                        <button onclick="abrirEditarProducto(
-                                    {{ $producto->id }},
-                                    {{ $producto->categoria_id }},
-                                    {{ $producto->tipo_producto_id ?? 'null' }},
-                                    @js($producto->codigo ?? ''),
-                                    @js($producto->nombre),
-                                    @js($producto->descripcion ?? ''),
-                                    {{ $producto->precio_compra }},
-                                    {{ $producto->precio_venta }},
-                                    {{ $producto->stock }},
-                                    {{ $producto->stock_minimo }},
-                                    {{ is_null($producto->marco) ? 'null' : ($producto->marco ? '1' : '0') }},
-                                    @js($producto->marca ?? ''),
-                                    @js($producto->referencia ?? ''),
-                                    {{ $producto->imagenes->map(fn($i) => ['id' => $i->id, 'path' => $i->path, 'es_principal' => $i->es_principal])->toJson() }}
-                                )"
-                                class="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                            </svg>
-                            Editar
-                        </button>
-
-                        {{-- Botón ajustar stock --}}
-                        <button onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre))"
-                                class="p-2 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl transition"
-                                title="Ajustar stock">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                            </svg>
-                        </button>
-
-                        {{-- Botón eliminar --}}
-                        <form method="POST"
-                              action="{{ route('admin.productos.destroy', $producto) }}"
-                              onsubmit="return confirm(@js('¿Desactivar «' . $producto->nombre . '»?'))">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit"
-                                    class="p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition"
-                                    title="Desactivar">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                </svg>
-                            </button>
-                        </form>
-                    </div>
-                </div>
+    @if ($vista === 'lista')
+        <div data-vista="lista" class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-gray-50/50 border-b border-gray-100">
+                            <th class="py-3 pl-4 pr-2"><span class="sr-only">Foto</span></th>
+                            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Producto</th>
+                            <th class="hidden lg:table-cell text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Categoría</th>
+                            <th class="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Precio</th>
+                            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock</th>
+                            <th class="text-right py-3 pl-4 pr-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        @foreach ($productos as $producto)
+                            @include('admin.productos.partials.fila', ['producto' => $producto])
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
-        @endforeach
-    </div>
+        </div>
+    @else
+        <div data-vista="tarjetas" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            @foreach ($productos as $producto)
+                @include('admin.productos.partials.tarjeta', ['producto' => $producto])
+            @endforeach
+        </div>
+    @endif
 
     {{-- Paginación — conserva los filtros activos en los links --}}
     <div class="mt-8">

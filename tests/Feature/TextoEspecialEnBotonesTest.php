@@ -79,16 +79,23 @@ class TextoEspecialEnBotonesTest extends TestCase
             'estado'        => 'activo',
         ]);
 
-        $html = $this->actingAs($usuario)->get(route('admin.productos.index'))->assertOk()->getContent();
+        // Las dos vistas (tarjetas y lista) usan los mismos botones: se revisan las dos
+        foreach (['tarjetas', 'lista'] as $vista) {
+            $html = $this->actingAs($usuario)
+                ->get(route('admin.productos.index', ['vista' => $vista]))
+                ->assertOk()
+                ->getContent();
 
-        $this->assertStringContainsString("abrirAjusteStock({$producto->id}, " . Js::from($producto->nombre) . ')', $html);
-        $this->assertStringContainsString(Js::from($producto->descripcion)->toHtml(), $html);
-        $this->assertStringContainsString(Js::from($producto->codigo)->toHtml(), $html);
-        $this->assertStringContainsString(
-            'return confirm(' . Js::from("¿Desactivar «{$producto->nombre}»?") . ')',
-            $html
-        );
-        $this->assertStringNotContainsString("confirm('¿Desactivar", $html);
+            $this->assertStringContainsString("abrirAjusteStock({$producto->id}, " . Js::from($producto->nombre) . ')', $html, "Vista {$vista}");
+            $this->assertStringContainsString(Js::from($producto->descripcion)->toHtml(), $html, "Vista {$vista}");
+            $this->assertStringContainsString(Js::from($producto->codigo)->toHtml(), $html, "Vista {$vista}");
+            $this->assertStringContainsString(
+                'return confirm(' . Js::from("¿Desactivar «{$producto->nombre}»?") . ')',
+                $html,
+                "Vista {$vista}"
+            );
+            $this->assertStringNotContainsString("confirm('¿Desactivar", $html, "Vista {$vista}");
+        }
     }
 
     public function test_tipos_de_producto_pasan_el_nombre_escapado(): void

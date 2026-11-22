@@ -12,6 +12,7 @@ use App\Models\TipoMovimientoStock;
 use App\Models\TipoProducto;
 use App\Services\ProductoService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie;
 
 /**
  * Controlador de Productos.
@@ -21,15 +22,25 @@ use Illuminate\Http\Request;
  */
 class ProductoController extends Controller
 {
+    /**
+     * Productos por página según la vista: las tarjetas llenan 3 filas de 4 columnas;
+     * la lista es compacta y muestra muchos más.
+     */
+    private const POR_PAGINA = ['tarjetas' => 12, 'lista' => 100];
+
+    /** Cookie con la vista elegida en este equipo (PC, iPad...). */
+    private const COOKIE_VISTA = 'productos_vista';
+
     public function __construct(
         private ProductoService $productoService
     ) {}
 
     /**
-     * Lista productos con filtros: categoría, búsqueda y stock bajo.
+     * Lista productos con filtros: categoría, búsqueda y stock bajo, en tarjetas o
+     * en lista (ver vistaElegida()).
      *
-     * Usa eager loading (with) para evitar N+1 queries al mostrar
-     * categoría e imagen principal de cada producto en el grid.
+     * Usa eager loading (with) para evitar N+1 queries: categoría, tipo, imagen
+     * principal y todas las imágenes (las usa el botón Editar de cada producto).
      */
     public function index(Request $request)
     {
@@ -37,9 +48,10 @@ class ProductoController extends Controller
         $categoriaFiltro = $request->input('categoria');
         $buscar          = $request->input('buscar');
         $stockBajo       = $request->boolean('stock_bajo'); // convierte '1'/'' a true/false
+        $vista           = $this->vistaElegida($request);
 
         $query = Producto::activos()
-            ->with(['categoria', 'tipoProducto', 'imagenPrincipal'])
+            ->with(['categoria', 'tipoProducto', 'imagenPrincipal', 'imagenes'])
             ->when($categoriaFiltro, fn ($q) => $q->deCategoria((int) $categoriaFiltro))
             ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {
@@ -50,14 +62,37 @@ class ProductoController extends Controller
             ->when($stockBajo, fn ($q) => $q->stockBajo())
             ->orderBy('nombre');
 
-        // Paginamos de 12 en 12 para el grid de 4 columnas (3 filas completas)
-        $productos = $query->paginate(12)->withQueryString();
+        $productos = $query->paginate(self::POR_PAGINA[$vista])->withQueryString();
 
         $categorias         = Categoria::activas()->orderBy('nombre')->get();
         $tiposProducto      = TipoProducto::orderBy('nombre')->get();
         $tiposMovimiento    = TipoMovimientoStock::orderBy('nombre')->get();
 
-        return view('admin.productos.index', compact('productos', 'categorias', 'tiposProducto', 'tiposMovimiento'));
+        return view('admin.productos.index', compact('productos', 'categorias', 'tiposProducto', 'tiposMovimiento', 'vista'));
+    }
+
+    /**
+     * Vista elegida: 'tarjetas' o 'lista'.
+     *
+     * La del enlace (?vista=) si es válida, y queda guardada en una cookie de este
+     * equipo por un año. Si no viene, la de la cookie; si no hay, tarjetas.
+     *
+     * Se decide aquí, y no con localStorage, porque cambia cuántos productos van por
+     * página. Así la página sale dibujada en su vista desde el principio, sin parpadeo.
+     */
+    private function vistaElegida(Request $request): string
+    {
+        $pedida = $request->query('vista');
+
+        if (is_string($pedida) && isset(self::POR_PAGINA[$pedida])) {
+            Cookie::queue(self::COOKIE_VISTA, $pedida, 60 * 24 * 365);
+
+            return $pedida;
+        }
+
+        $guardada = $request->cookie(self::COOKIE_VISTA);
+
+        return is_string($guardada) && isset(self::POR_PAGINA[$guardada]) ? $guardada : 'tarjetas';
     }
 
     /**
