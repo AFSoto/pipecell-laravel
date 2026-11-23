@@ -129,6 +129,21 @@ class BusquedaEnVivoTest extends TestCase
         );
     }
 
+    public function test_la_busqueda_lleva_la_vista_de_esta_pestana(): void
+    {
+        // Sin el campo oculto, la búsqueda no llevaba la vista y el servidor usaba la cookie:
+        // si en otra pestaña se había elegido la otra, buscar la cambiaba aquí
+        foreach (['tarjetas', 'lista'] as $vista) {
+            $html = $this->get(route('admin.productos.index', ['vista' => $vista]))->assertOk()->getContent();
+
+            $this->assertMatchesRegularExpression(
+                '#<form[^>]*id="form-filtros".*<div data-en-vivo="vista"[^>]*>\s*<input type="hidden" name="vista" value="' . $vista . '">.*</form>#s',
+                $html,
+                "en {$vista}"
+            );
+        }
+    }
+
     // ── Reparaciones ──
 
     public function test_reparaciones_tiene_todas_las_partes_en_cada_caso(): void
@@ -159,5 +174,32 @@ class BusquedaEnVivoTest extends TestCase
             ->assertOk()
             ->assertSee('No hay reparaciones registradas')
             ->assertDontSee('No se encontraron reparaciones con esa búsqueda');
+    }
+
+    // ── Las dos páginas ──
+
+    public function test_aria_live_va_en_un_contenedor_que_no_se_reemplaza(): void
+    {
+        // Si la zona que anuncia es la que se reemplaza (data-en-vivo), el lector de pantalla
+        // no anuncia nada: aria-live va en un contenedor fijo con el indicador adentro
+        $this->crearReparacion($this->usuario, ['nombre_cliente' => 'Laura Gómez']);
+
+        foreach ([
+            'productos'    => route('admin.productos.index', ['buscar' => 'Carg']),
+            'reparaciones' => route('admin.reparaciones.index', ['buscar' => 'Laura']),
+        ] as $caso => $url) {
+            $html = $this->get($url)->assertOk()->getContent();
+
+            $this->assertMatchesRegularExpression(
+                '#<div(?![^>]*data-en-vivo)[^>]*aria-live="polite"[^>]*>\s*<(div|p)[^>]*data-en-vivo="indicador"#',
+                $html,
+                "{$caso}: el indicador va adentro de un aria-live que no es una parte"
+            );
+            $this->assertDoesNotMatchRegularExpression(
+                '#<[^>]*(data-en-vivo="[^"]*"[^>]*aria-live|aria-live[^>]*data-en-vivo)#',
+                $html,
+                "{$caso}: ninguna parte data-en-vivo lleva aria-live"
+            );
+        }
     }
 }

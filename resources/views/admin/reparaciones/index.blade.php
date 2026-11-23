@@ -238,9 +238,11 @@
     </div>
 </form>
 
-{{-- Indicador de filtros activos (aria-live: se anuncia al cambiar con la búsqueda) --}}
-<div class="flex items-center justify-between mb-6">
-    <p data-en-vivo="indicador" aria-live="polite" class="text-sm text-gray-500">
+{{-- Indicador de filtros activos. aria-live va en este contenedor, que no se reemplaza:
+     la búsqueda en vivo cambia lo de adentro (data-en-vivo) y así el lector de pantalla
+     lo anuncia. Si se reemplazara la zona entera, no anunciaría nada. --}}
+<div class="flex items-center justify-between mb-6" aria-live="polite">
+    <p data-en-vivo="indicador" class="text-sm text-gray-500">
         @php
             $estadoLabel = match($fEstado) {
                 'en_proceso' => 'en proceso',
@@ -262,11 +264,12 @@
             };
         @endphp
 
+        {{-- total(): todas las que encontró, aunque la página muestre 25 --}}
         @if($fBuscar && $estadoLabel)
-            <strong>{{ $reparaciones->count() }}</strong> resultado{{ $reparaciones->count() !== 1 ? 's' : '' }}
+            <strong>{{ $reparaciones->total() }}</strong> resultado{{ $reparaciones->total() !== 1 ? 's' : '' }}
             para "<strong>{{ $fBuscar }}</strong>" en {{ $estadoLabel }}
         @elseif($fBuscar)
-            <strong>{{ $reparaciones->count() }}</strong> resultado{{ $reparaciones->count() !== 1 ? 's' : '' }}
+            <strong>{{ $reparaciones->total() }}</strong> resultado{{ $reparaciones->total() !== 1 ? 's' : '' }}
             para "<strong>{{ $fBuscar }}</strong>"
         @elseif($estadoLabel && $sinFiltroFecha)
             Mostrando reparaciones {{ $estadoLabel }}
@@ -324,11 +327,12 @@
     </div>
     @endif
 </div>
-{{-- Paginación (solo cuando hay más de una página y no hay búsqueda por texto) --}}
+{{-- Paginación, también con búsqueda (solo cuando hay más de una página). Los enlaces
+     llevan la búsqueda y los filtros (withQueryString en el controlador) --}}
 <div data-en-vivo="paginacion">
-    @if(!request('buscar') && method_exists($reparaciones, 'hasPages') && $reparaciones->hasPages())
+    @if($reparaciones->hasPages())
     <div class="mt-6 flex justify-center">
-        {{ $reparaciones->appends(request()->query())->links() }}
+        {{ $reparaciones->links() }}
     </div>
     @endif
 </div>
@@ -738,8 +742,10 @@
     // ══════════════════════════════════════
 // MODAL EDITAR
 // ══════════════════════════════════════
+// El modal no guarda la fila: la búsqueda en vivo y el tiempo real reemplazan las filas, y
+// una guardada quedaría vieja (fuera de la página). Cuando hace falta, se busca la que está
+// en pantalla con filaDe(editReparacionId).
 let editReparacionId = null;
-let editFila = null;
 
 // Cómo estaba la reparación al abrir el modal. Se manda al guardar: si otra persona
 // cambió alguno de estos campos mientras tanto, el servidor no guarda (409).
@@ -753,11 +759,15 @@ function cabecerasEnVivo() {
 }
 
 function abrirModalEditar(btn) {
-    const fila  = btn.closest('tr');
-    const datos = JSON.parse(fila.dataset.edit);
+    mostrarModalEditar(JSON.parse(btn.closest('tr').dataset.edit));
+}
 
+/**
+ * Llena el modal con los datos de una reparación (el data-edit de su fila) y lo abre.
+ * Lo usan Editar (la fila de la pantalla) y «Cargar sus cambios» (la que manda el servidor).
+ */
+function mostrarModalEditar(datos) {
     editReparacionId = datos.id;
-    editFila = fila;
     datosAlAbrir = datos;
     ocultarAvisoCambioEdicion();
 
@@ -897,12 +907,11 @@ function pagarSaldoTotal(reparacionId) {
 }
 
 function cerrarModalEditar() {
-    const fila = editFila;
+    const fila = editReparacionId ? filaDe(editReparacionId) : null;
 
     document.getElementById('modal-editar').classList.add('hidden');
     ocultarAvisoCambioEdicion();
     editReparacionId = null;
-    editFila = null;
     datosAlAbrir = null;
 
     // Si otra persona la cambió de estado mientras estaba abierta, ahora sí sale del filtro
@@ -919,20 +928,32 @@ function ocultarAvisoCambioEdicion() {
     document.getElementById('edit-aviso-cambio').classList.add('hidden');
 }
 
-// "Cargar sus cambios": trae la fila actualizada del servidor y vuelve a llenar el modal.
+// "Cargar sus cambios": trae la reparación del servidor y vuelve a llenar el modal con ella.
+// Usa la fila que manda /sincronizar y no la de la pantalla: la búsqueda en vivo pudo
+// sacarla de la lista (si sigue en pantalla, sincronizarFilas también la pone al día).
 // Lo que se había escrito y no se guardó se pierde (es lo que pidió quien tocó el botón).
 // Si no se pudo traer (sin conexión o sin sesión), el modal y el aviso se quedan como estaban.
 async function cargarCambiosEdicion() {
     if (!editReparacionId) return;
 
-    const cargo = await sincronizarFilas([String(editReparacionId)]);
-    if (!cargo) {
+    const id   = String(editReparacionId);
+    const data = await sincronizarFilas([id]);
+
+    // Mientras llegaba, se cerró el modal (o se abrió el de otra reparación): no se toca
+    if (String(editReparacionId) !== id) return;
+
+    if (!data) {
         mostrarNotificacion('No se pudieron cargar los cambios. Revisa la conexión e intenta otra vez.', 'error', 6000);
         return;
     }
 
-    const boton = editFila?.querySelector('button[onclick="abrirModalEditar(this)"]');
-    if (boton) abrirModalEditar(boton);
+    const fila = data.filas?.[id] ? crearFila(data.filas[id]) : null;
+    if (!fila) {
+        mostrarNotificacion('Esta reparación ya no existe. Recarga la página para revisar la lista.', 'error', 6000);
+        return;
+    }
+
+    mostrarModalEditar(JSON.parse(fila.dataset.edit));
 }
 
 function guardarEdicion() {
@@ -1019,15 +1040,19 @@ function mostrarErroresEdicion(errores) {
     document.getElementById('edit-errores').classList.remove('hidden');
 }
 
+// Pinta en la fila lo que se acaba de guardar. La fila que está en pantalla ahora: la
+// búsqueda en vivo pudo reemplazarla o sacarla de la lista (entonces no hay nada que pintar).
+// Después guardarEdicion() llama a refrescarFila(): el servidor tiene la última palabra.
 function actualizarFilaEdicion(datos) {
-    if (!editFila) return;
+    const fila = filaDe(datos.id);
+    if (!fila) return;
 
     // textContent (no innerHTML): son datos escritos por el usuario
-    const celdaCliente = editFila.querySelector('[data-celda="cliente"]');
+    const celdaCliente = fila.querySelector('[data-celda="cliente"]');
     celdaCliente.querySelector('[data-campo="nombre"]').textContent   = datos.nombre_cliente;
     celdaCliente.querySelector('[data-campo="telefono"]').textContent = datos.telefono_cliente || 'Sin teléfono';
 
-    const celdaEquipo = editFila.querySelector('[data-celda="equipo"]');
+    const celdaEquipo = fila.querySelector('[data-celda="equipo"]');
     celdaEquipo.querySelector('[data-campo="marca"]').textContent  = datos.marca;
     celdaEquipo.querySelector('[data-campo="modelo"]').textContent = datos.modelo || '—';
 
@@ -1039,28 +1064,28 @@ function actualizarFilaEdicion(datos) {
 
     // El recorte viene del servidor (Reparacion::descripcionCorta), igual que en Blade
     const descripcion = datos.descripcion_falla || '';
-    const celdaDescripcion = editFila.querySelector('[data-celda="descripcion"]');
+    const celdaDescripcion = fila.querySelector('[data-celda="descripcion"]');
     celdaDescripcion.textContent = datos.descripcion_corta || '—';
     celdaDescripcion.title = descripcion;
     celdaDescripcion.classList.toggle('text-purple-600', !!descripcion);
     celdaDescripcion.classList.toggle('font-medium', !!descripcion);
     celdaDescripcion.classList.toggle('text-gray-400', !descripcion);
 
-    editFila.querySelector('[data-celda="valor"]').textContent = '$' + datos.valor_total.toLocaleString('es-CO');
+    fila.querySelector('[data-celda="valor"]').textContent = '$' + datos.valor_total.toLocaleString('es-CO');
 
-    const abonado = leerMonto(editFila, 'abonado');
+    const abonado = leerMonto(fila, 'abonado');
     const saldo   = datos.valor_total - abonado;
-    editFila.querySelector('[data-celda="saldo"]').innerHTML = `
+    fila.querySelector('[data-celda="saldo"]').innerHTML = `
         <span class="${saldo > 0 ? 'text-red-600' : 'text-green-600'} font-medium">
             $${saldo.toLocaleString('es-CO')}
         </span>`;
 
     // Si el valor total cambió, el saldo también: mostrar u ocultar Abono y Pagar total
-    actualizarBotonesDePago(editFila, saldo);
+    actualizarBotonesDePago(fila, saldo);
 
     // Actualizar data-edit con valores frescos para una segunda edición
-    editFila.dataset.edit = JSON.stringify({
-        ...JSON.parse(editFila.dataset.edit),
+    fila.dataset.edit = JSON.stringify({
+        ...JSON.parse(fila.dataset.edit),
         ...datos,
     });
 }
@@ -1674,10 +1699,15 @@ function actualizarFilaEdicion(datos) {
      * Limpia el campo de búsqueda y vuelve a la lista sin búsqueda (mantiene los otros
      * filtros), sin recargar: requestSubmit() pasa por la búsqueda en vivo
      * (resources/js/busqueda-en-vivo.js); submit() recargaría la página.
+     * Después deja el foco en el campo, como la barra de búsqueda de iOS: la × desaparece
+     * con la búsqueda, y así se puede escribir la próxima sin volver a tocar el campo.
      */
     function limpiarBusqueda() {
-        document.getElementById('input-buscar').value = '';
+        const campo = document.getElementById('input-buscar');
+
+        campo.value = '';
         formFiltros.requestSubmit();
+        campo.focus();
     }
 
     // ══════════════════════════════════════
@@ -1766,7 +1796,7 @@ function actualizarFilaEdicion(datos) {
     // Máximo de filas por pedido: el mismo límite de ReparacionController::sincronizar()
     const MAXIMO_FILAS_POR_PEDIDO = 50;
 
-    /** Pone al día todas las filas visibles, en grupos de 50 (una búsqueda no tiene paginación). */
+    /** Pone al día todas las filas visibles, en grupos de 50 (una página trae hasta 25: un solo pedido). */
     function ponerseAlDia() {
         const ids = Array.from(document.querySelectorAll('tr.reparacion-row'), fila => fila.dataset.id);
 
@@ -1788,15 +1818,25 @@ function actualizarFilaEdicion(datos) {
     let ultimoPedidoPintado = 0;
     const ultimoPedidoPorFila = new Map();   // id → número del último pedido que la incluyó
 
+    // Cuándo se pidió por última vez cada fila (performance.now()): por un aviso de Pusher o
+    // después de un cambio propio. Una búsqueda en vivo que salió antes puede traer esas filas
+    // en su versión vieja: al llegar, se vuelven a pedir (ver busqueda-en-vivo:actualizada).
+    const momentoPedidoPorFila = new Map();  // id → momento
+
     /**
      * Pide al servidor cómo están ahora esas filas (más contadores y cajas libres) y lo aplica.
      * avisos: Map id → avisos de Pusher que lo causaron (vacío al ponerse al día o al refrescar).
      * opciones.sinAvisosFlotantes: reintento de una fila aplazada (sus avisos ya salieron).
-     * Devuelve true si el servidor respondió bien.
+     * Devuelve lo que respondió el servidor ({ filas, contadores, cajas_libres }), o null si no
+     * respondió bien.
      */
     async function sincronizarFilas(ids, avisos = new Map(), opciones = {}) {
-        const numero = ++numeroPedido;
-        ids.forEach(id => ultimoPedidoPorFila.set(String(id), numero));
+        const numero  = ++numeroPedido;
+        const momento = performance.now();
+        ids.forEach(id => {
+            ultimoPedidoPorFila.set(String(id), numero);
+            momentoPedidoPorFila.set(String(id), momento);
+        });
 
         let data;
         try {
@@ -1810,14 +1850,14 @@ function actualizarFilaEdicion(datos) {
 
             if (sinSesion) {
                 window.dispatchEvent(new CustomEvent('tiempo-real:sesion-vencida'));
-                return false;
+                return null;
             }
-            if (!respuesta.ok) return false;
+            if (!respuesta.ok) return null;
 
             data = await respuesta.json();
         } catch (error) {
             // Sin conexión: la pantalla se pone al día sola al reconectar
-            return false;
+            return null;
         }
 
         Object.entries(data.filas || {}).forEach(([id, html]) => {
@@ -1834,7 +1874,7 @@ function actualizarFilaEdicion(datos) {
             aplicarCajasLibres(data.cajas_libres);
         }
 
-        return true;
+        return data;
     }
 
     /** Vuelve a pedir una fila después de un cambio propio: el servidor tiene la última palabra. */
@@ -1897,7 +1937,6 @@ function actualizarFilaEdicion(datos) {
 
         actual.replaceWith(nueva);
         pintarWhatsapp(nueva);
-        if (editFila === actual) editFila = nueva;
 
         if (avisos.length) resaltarFila(nueva, autor);
         ponerAlDiaModalesAbiertos(id, nueva, datos, avisos, autor);
@@ -2067,11 +2106,24 @@ function actualizarFilaEdicion(datos) {
 
     // Pintar el indicador de WhatsApp de cada fila al cargar la página, y a las filas que
     // trae la búsqueda en vivo. El tiempo real trabaja sobre las filas que estén en
-    // pantalla en cada momento (filaDe, ponerseAlDia), así que no necesita nada más.
+    // pantalla en cada momento (filaDe, ponerseAlDia).
     document.querySelectorAll('tr.reparacion-row').forEach(pintarWhatsapp);
 
-    document.addEventListener('busqueda-en-vivo:actualizada', () => {
+    // La búsqueda en vivo se armó en el servidor cuando salió su pedido (detail.inicio). Las
+    // filas que se pidieron a /sincronizar desde entonces (un aviso de Pusher, un cambio
+    // propio) pueden venir en su versión de antes: se vuelven a pedir, sin avisos ni
+    // resaltado. Sin esto, una reparación que otra persona marcó «Arreglado» mientras
+    // llegaba la búsqueda volvía a verse «En proceso».
+    document.addEventListener('busqueda-en-vivo:actualizada', ({ detail }) => {
         document.querySelectorAll('tr.reparacion-row').forEach(pintarWhatsapp);
+
+        const pedidasMientras = [...momentoPedidoPorFila]
+            .filter(([id, momento]) => momento >= detail.inicio && filaDe(id))
+            .map(([id]) => id);
+
+        if (pedidasMientras.length) {
+            sincronizarFilas(pedidasMientras, new Map(), { sinAvisosFlotantes: true });
+        }
     });
 
     // Abrir el modal correcto según el bag de errores de validación

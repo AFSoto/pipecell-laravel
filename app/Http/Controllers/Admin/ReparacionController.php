@@ -30,6 +30,14 @@ class ReparacionController extends Controller
     /** Relaciones que usa cada fila de la tabla (parcial reparaciones/partials/fila). */
     private const RELACIONES_FILA = ['caja', 'abonos', 'repuestos.producto', 'ultimoWhatsapp'];
 
+    /**
+     * Reparaciones por página: la lista y con búsqueda. La búsqueda también va por páginas:
+     * en vivo, las primeras letras traen cientos (con 3.000 reparaciones, "sam" en
+     * Todos / Este año eran 706 filas y 4 MB por búsqueda, y la pantalla se trababa).
+     */
+    private const POR_PAGINA          = 10;
+    private const POR_PAGINA_BUSCANDO = 25;
+
     public function __construct(
         private ReparacionService $reparacionService,
         private NotificacionService $notificacionService
@@ -49,8 +57,9 @@ class ReparacionController extends Controller
         // Por defecto se usa "mes".
         $periodo = $request->input('periodo', 'mes');
 
-        // Texto ingresado en el buscador
-        $buscar  = $request->input('buscar');
+        // Texto ingresado en el buscador (se busca desde 2 caracteres)
+        $buscar   = $request->input('buscar');
+        $buscando = strlen($buscar ?? '') >= 2;
 
         // Fecha inicial personalizada
         $desde   = $request->input('desde');
@@ -69,29 +78,14 @@ class ReparacionController extends Controller
             // Filtra por estado si no es "todos"
             ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
 
-            // Aplica búsqueda únicamente si tiene
-            // al menos 2 caracteres
-            ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
+            // Aplica la búsqueda únicamente si tiene al menos 2 caracteres. Palabra por
+            // palabra, en nombre, teléfono, marca o modelo (ver Reparacion::scopeBuscar)
+            ->when($buscando, fn ($q) => $q->buscar($buscar))
 
-                // Agrupa las búsquedas OR
-                $q->where(function ($sub) use ($buscar) {
-
-                    // Busca coincidencias por nombre
-                    $sub->where('nombre_cliente', 'like', "%{$buscar}%")
-
-                        // Busca coincidencias por teléfono
-                        ->orWhere('telefono_cliente', 'like', "%{$buscar}%")
-
-                        // Busca coincidencias por marca
-                        ->orWhere('marca', 'like', "%{$buscar}%")
-
-                        // Busca coincidencias por modelo
-                        ->orWhere('modelo', 'like', "%{$buscar}%");
-                });
-            })
-
-            // Ordena por fecha más reciente
-            ->latest();
+            // Ordena por fecha más reciente. El id desempata las creadas en el mismo
+            // segundo: siempre en el mismo orden, así la paginación no repite ni salta ninguna
+            ->latest()
+            ->orderByDesc('id');
 
         // Solo aplica filtros de fecha
         // cuando el estado lo requiere
@@ -148,12 +142,17 @@ class ReparacionController extends Controller
         }
 
 
-        // Si existe búsqueda activa,
-        // obtiene todos los resultados.
-        // Si no, usa paginación.
-        $reparaciones = strlen($buscar ?? '') >= 2
-            ? $query->get()
-            : $query->paginate(10);
+        // Por páginas, también con búsqueda (más por página: ver POR_PAGINA_BUSCANDO).
+        // withQueryString: los enlaces de página llevan la búsqueda y los filtros
+        $reparaciones = $query
+            ->paginate($buscando ? self::POR_PAGINA_BUSCANDO : self::POR_PAGINA)
+            ->withQueryString();
+
+        // Página que ya no existe (un enlace viejo, o la búsqueda ahora trae menos): a la
+        // última que sí, con la búsqueda. Sin resultados, lastPage() es 1 y sale el aviso vacío.
+        if ($reparaciones->isEmpty() && $reparaciones->currentPage() > 1) {
+            return redirect()->to($reparaciones->url($reparaciones->lastPage()));
+        }
 
         // Contadores para mostrar estadísticas
         $contadores = $this->contadores();

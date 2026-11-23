@@ -115,10 +115,14 @@
         </div>
 
         {{-- Vista: tarjetas o lista. Son enlaces: conservan los filtros y vuelven a la
-             página 1 (cambia cuántos van por página). El controlador la recuerda. --}}
+             página 1 (cambia cuántos van por página). El controlador la recuerda.
+             El campo oculto hace que la búsqueda lleve la vista de esta pestaña, como los
+             enlaces de página: sin él, el servidor usaba la cookie, y si en otra pestaña se
+             había elegido la otra vista, buscar la cambiaba aquí. --}}
         <div data-en-vivo="vista"
              class="ml-auto inline-flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl"
              role="group" aria-label="Vista">
+            <input type="hidden" name="vista" value="{{ $vista }}">
             @foreach ([
                 'tarjetas' => ['Ver como tarjetas', 'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z'],
                 'lista'    => ['Ver como lista', 'M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z'],
@@ -136,8 +140,11 @@
     </div>
 </form>
 
-{{-- ── Indicador de resultados (aria-live: se anuncia al cambiar con la búsqueda) ── --}}
-<div data-en-vivo="indicador" aria-live="polite">
+{{-- ── Indicador de resultados. aria-live va en un contenedor que no se reemplaza: la
+     búsqueda en vivo cambia lo de adentro (data-en-vivo) y así el lector de pantalla lo
+     anuncia. Si se reemplazara la zona entera, no anunciaría nada. ── --}}
+<div aria-live="polite">
+<div data-en-vivo="indicador">
     @if ($hayFiltros)
         <p class="text-sm text-gray-500 mb-4">
             Mostrando <span class="font-medium text-gray-700">{{ $productos->total() }}</span> producto(s)
@@ -152,6 +159,7 @@
             @endif
         </p>
     @endif
+</div>
 </div>
 
 {{-- ── Productos: se dibuja solo la vista elegida (tarjetas o lista) ── --}}

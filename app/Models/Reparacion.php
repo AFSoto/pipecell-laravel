@@ -164,6 +164,42 @@ class Reparacion extends Model
         return $query->whereDate('created_at', today());
     }
 
+    /**
+     * El teléfono sin espacios, guiones, puntos, paréntesis ni "+", en SQL. replace()
+     * anidado funciona igual en MySQL y en SQLite (los tests). Lo usa scopeBuscar().
+     */
+    private const TELEFONO_SOLO_DIGITOS = "replace(replace(replace(replace(replace(replace(telefono_cliente, ' ', ''), '-', ''), '.', ''), '(', ''), ')', ''), '+', '')";
+
+    /**
+     * Búsqueda de la lista: cada palabra tiene que estar en el nombre, el teléfono, la marca
+     * o el modelo, en cualquier orden ("Samsung A10", "Ruiz Pedro"). Se separa por espacios
+     * comunes, como en Productos (sin /u: un texto mal codificado no da error).
+     *
+     * Una palabra que es un número (sin contar paréntesis, puntos, "+" ni guiones) también
+     * se compara con los dígitos del teléfono, que se guarda tal como se escribió
+     * ("310 123 4567"): así "3101234567" o "310-123-4567" lo encuentran. Y como las demás,
+     * busca en el modelo: "14" encuentra el "iPhone 14".
+     */
+    public function scopeBuscar($query, string $texto)
+    {
+        foreach (preg_split('/\s+/', trim($texto), -1, PREG_SPLIT_NO_EMPTY) as $palabra) {
+            $query->where(function ($sub) use ($palabra) {
+                $sub->where('nombre_cliente', 'like', "%{$palabra}%")
+                    ->orWhere('telefono_cliente', 'like', "%{$palabra}%")
+                    ->orWhere('marca', 'like', "%{$palabra}%")
+                    ->orWhere('modelo', 'like', "%{$palabra}%");
+
+                $digitos = preg_replace('/[().+-]/', '', $palabra);
+
+                if ($digitos !== '' && ctype_digit($digitos)) {
+                    $sub->orWhereRaw(self::TELEFONO_SOLO_DIGITOS . ' like ?', ["%{$digitos}%"]);
+                }
+            });
+        }
+
+        return $query;
+    }
+
     // ── Helpers ──
 
     public function estaPagada(): bool

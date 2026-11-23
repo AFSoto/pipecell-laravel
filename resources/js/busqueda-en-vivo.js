@@ -17,6 +17,12 @@
  *
  * Al terminar avisa con el evento "busqueda-en-vivo:actualizada" en document, para que
  * cada página ponga al día lo suyo (ver productos/index y reparaciones/index).
+ * detail = { url, inicio }: inicio es performance.now() cuando salió el pedido. El servidor
+ * armó la respuesta después de ese momento, así que lo que cambió desde entonces puede
+ * venir en su versión de antes (Reparaciones vuelve a pedir esas filas).
+ *
+ * Si se escribió antes de que cargara este archivo (red lenta en el iPad), esas teclas no se
+ * oyeron: al arrancar se compara el campo con lo que dibujó el servidor y, si cambió, busca.
  *
  * No manda X-Requested-With a propósito: así Laravel guarda la búsqueda como "página
  * anterior", y un formulario que vuelve con errores vuelve a la misma búsqueda.
@@ -35,7 +41,10 @@ function iniciar(form) {
     let temporizador = null;
     let pedido       = null; // AbortController del pedido en curso
     let urlPedida    = null; // la URL de ese pedido
-    let urlVista     = urlDeBusqueda(form, campo.value.trim(), MINIMO_CON_ENTER); // lo que muestra la página
+
+    // Lo que muestra la página: la búsqueda que dibujó el servidor (el value del HTML), no
+    // lo que tenga el campo ahora, que pudo escribirse antes de que cargara este archivo
+    let urlVista = urlDeBusqueda(form, campo.defaultValue.trim(), MINIMO_CON_ENTER);
 
     campo.addEventListener('input', () => {
         clearTimeout(temporizador);
@@ -65,7 +74,8 @@ function iniciar(form) {
             return;
         }
 
-        const este = new AbortController();
+        const este   = new AbortController();
+        const inicio = performance.now();
         pedido    = este;
         urlPedida = url;
         marcarCargando(true);
@@ -86,7 +96,7 @@ function iniciar(form) {
             reemplazarPartes(pagina);
             history.replaceState(history.state, '', url);
             urlVista = url;
-            document.dispatchEvent(new CustomEvent('busqueda-en-vivo:actualizada', { detail: { url } }));
+            document.dispatchEvent(new CustomEvent('busqueda-en-vivo:actualizada', { detail: { url, inicio } }));
         } catch (error) {
             if (error.name === 'AbortError') return;
 
@@ -99,6 +109,10 @@ function iniciar(form) {
             }
         }
     }
+
+    // Se escribió antes de que cargara este archivo: la lista no lo muestra. Se busca como
+    // si se acabara de escribir (desde 3 letras; con menos, vuelve la lista completa)
+    if (campo.value !== campo.defaultValue) buscar(MINIMO_EN_VIVO);
 }
 
 /**
