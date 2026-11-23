@@ -60,14 +60,14 @@
             @endforeach
         </select>
 
-        {{-- Input de búsqueda por nombre o código --}}
+        {{-- Input de búsqueda por nombre, marca o código --}}
         <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-blue-500 transition">
             <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
             <input type="text" name="buscar"
                    value="{{ request('buscar') }}"
-                   placeholder="Buscar por nombre o código..."
+                   placeholder="Nombre, marca o código..."
                    class="text-sm text-gray-700 outline-none bg-transparent w-56">
         </div>
 
@@ -263,7 +263,7 @@
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Categoría *</label>
-                    <select name="categoria_id" required
+                    <select name="categoria_id" id="crear-categoria_id" required
                             onchange="toggleMarco(this.value, 'crear')"
                             class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                         <option value="">Selecciona...</option>
@@ -309,17 +309,21 @@
                 </div>
             </div>
 
-            {{-- Marca y Referencia (solo visible para categoría Pantallas) --}}
-            <div id="crear-seccion-pantalla" class="hidden grid grid-cols-2 gap-4">
+            {{-- Marca (todas las categorías) y Referencia (solo pantallas).
+                 En pantallas la marca es la del celular, es obligatoria y arma el nombre. En el
+                 resto es la del producto y permite tener varios con el mismo nombre (dos
+                 "Batería iPhone 14" de distinta marca). mostrarCamposSegunCategoria() pone el
+                 asterisco y el ejemplo, y muestra u oculta la referencia. --}}
+            <div id="crear-seccion-marca" class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
+                    <label for="crear-marca" class="text-xs text-gray-500 mb-1 block">Marca<span id="crear-marca-obligatoria" class="hidden"> *</span></label>
                     <input type="text" name="marca" id="crear-marca" maxlength="100"
-                           placeholder="Ej: Xiaomi, Motorola"
+                           placeholder="Ej: Deji, Anker"
                            value="{{ $viejo('marca') }}"
                            oninput="generarNombrePantalla('crear')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
-                <div>
+                <div id="crear-wrapper-referencia" class="hidden">
                     <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
                     <input type="text" name="referencia" id="crear-referencia" maxlength="100"
                            placeholder="Ej: G20, 15C"
@@ -527,16 +531,16 @@
                 </div>
             </div>
 
-            {{-- Marca y Referencia (solo visible para categoría Pantallas) --}}
-            <div id="editar-seccion-pantalla" class="hidden grid grid-cols-2 gap-4">
+            {{-- Marca (todas las categorías) y Referencia (solo pantallas): ver el modal de crear --}}
+            <div id="editar-seccion-marca" class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
+                    <label for="editar-marca" class="text-xs text-gray-500 mb-1 block">Marca<span id="editar-marca-obligatoria" class="hidden"> *</span></label>
                     <input type="text" name="marca" id="editar-marca" maxlength="100"
-                           placeholder="Ej: Xiaomi, Motorola"
+                           placeholder="Ej: Deji, Anker"
                            oninput="generarNombrePantalla('editar')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
-                <div>
+                <div id="editar-wrapper-referencia" class="hidden">
                     <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
                     <input type="text" name="referencia" id="editar-referencia" maxlength="100"
                            placeholder="Ej: G20, 15C"
@@ -766,48 +770,80 @@
     // IDs de las categorías de pantallas (Categoria::esDePantallas), para mostrar el campo marco
     const categoriasConMarco = @json($categorias->filter->esDePantallas()->pluck('id')->values());
 
+    // Ejemplo del campo Marca: en pantallas es la marca del celular; en el resto, la del producto
+    const ejemploMarca = { pantalla: 'Ej: Xiaomi, Motorola', otra: 'Ej: Deji, Anker' };
+
+    function esCategoriaDePantallas(categoriaId) {
+        return categoriasConMarco.includes(parseInt(categoriaId));
+    }
+
     /**
-     * Muestra u oculta la sección de marco según si la categoría es de Pantallas.
+     * Muestra u oculta lo que depende de la categoría, sin borrar nada: marco, referencia
+     * y la vista previa del nombre (solo pantallas), y el asterisco y el ejemplo de Marca.
+     * Al volver con errores, el modal de crear usa solo esta: lo escrito se queda.
+     * @param {string|number} categoriaId  ID de la categoría seleccionada
+     * @param {string}        prefijo      'crear' o 'editar'
+     * @returns {boolean} si la categoría es de pantallas
+     */
+    function mostrarCamposSegunCategoria(categoriaId, prefijo) {
+        const esPantalla = esCategoriaDePantallas(categoriaId);
+
+        document.getElementById(`${prefijo}-seccion-marco`).classList.toggle('hidden', !esPantalla);
+        document.getElementById(`${prefijo}-wrapper-referencia`).classList.toggle('hidden', !esPantalla);
+        document.getElementById(`${prefijo}-marca-obligatoria`).classList.toggle('hidden', !esPantalla);
+        document.getElementById(`${prefijo}-marca`).placeholder = esPantalla ? ejemploMarca.pantalla : ejemploMarca.otra;
+
+        // Nombre: en pantallas se arma solo (vista previa); en el resto se escribe
+        document.getElementById(`${prefijo}-wrapper-nombre`).classList.toggle('hidden', esPantalla);
+        document.getElementById(`${prefijo}-preview-nombre`).classList.toggle('hidden', !esPantalla);
+
+        // Para que toggleMarco() sepa de qué clase de categoría se viene
+        document.getElementById(`${prefijo}-seccion-marca`).dataset.pantalla = esPantalla ? '1' : '0';
+
+        return esPantalla;
+    }
+
+    /**
+     * Al cambiar la categoría (y al abrir editar): muestra los campos que tocan y limpia lo
+     * que quedó oculto, para no enviar datos que no se ven.
+     * Al pasar entre pantallas y otra categoría (o al revés) también se borra la marca,
+     * porque cambia lo que significa (la del celular o la del producto), y, si se venía de
+     * pantallas, el nombre generado. Entre categorías que no son de pantallas se conservan.
      * @param {string|number} categoriaId  ID de la categoría seleccionada
      * @param {string}        prefijo      'crear' o 'editar'
      */
     function toggleMarco(categoriaId, prefijo) {
-        const esPantalla = categoriasConMarco.includes(parseInt(categoriaId));
+        const antes      = document.getElementById(`${prefijo}-seccion-marca`).dataset.pantalla; // '1', '0' o sin categoría aún
+        const esPantalla = mostrarCamposSegunCategoria(categoriaId, prefijo);
 
-        const seccionMarco = document.getElementById(`${prefijo}-seccion-marco`);
-        if (esPantalla) {
-            seccionMarco.classList.remove('hidden');
-        } else {
-            seccionMarco.classList.add('hidden');
-            seccionMarco.querySelectorAll('input[type=radio]').forEach(r => r.checked = false);
+        if (antes !== undefined && antes !== (esPantalla ? '1' : '0')) {
+            document.getElementById(`${prefijo}-marca`).value = '';
         }
 
-        const seccionPantalla = document.getElementById(`${prefijo}-seccion-pantalla`);
         if (esPantalla) {
-            seccionPantalla.classList.remove('hidden');
-        } else {
-            seccionPantalla.classList.add('hidden');
-            seccionPantalla.querySelectorAll('input[type=text]').forEach(i => i.value = '');
-        }
-
-        // Nombre: ocultar campo manual y mostrar preview cuando es pantalla
-        const wrapperNombre  = document.getElementById(`${prefijo}-wrapper-nombre`);
-        const previewNombre  = document.getElementById(`${prefijo}-preview-nombre`);
-        if (esPantalla) {
-            wrapperNombre.classList.add('hidden');
-            previewNombre.classList.remove('hidden');
             generarNombrePantalla(prefijo);
-        } else {
-            wrapperNombre.classList.remove('hidden');
-            previewNombre.classList.add('hidden');
-            // Limpiar el valor auto-generado para no confundir al servidor
+            return;
+        }
+
+        document.getElementById(`${prefijo}-seccion-marco`).querySelectorAll('input[type=radio]').forEach(r => r.checked = false);
+        document.getElementById(`${prefijo}-referencia`).value = '';
+
+        // Limpiar el valor auto-generado para no confundir al servidor
+        if (antes === '1') {
             document.getElementById(`${prefijo}-nombre`).value = '';
         }
     }
 
+    /**
+     * Arma el nombre de una pantalla: "Pantalla {marca} {referencia}".
+     * Solo en categorías de pantallas: Marca se ve en todas y llama a esta función al
+     * escribir, y en una batería no debe pisar el nombre que se escribió.
+     * @param {string} prefijo 'crear' o 'editar'
+     */
     function generarNombrePantalla(prefijo) {
-        const marcoSi = document.getElementById(`${prefijo}-marco-si`);
-        const marcoNo = document.getElementById(`${prefijo}-marco-no`);
+        if (!esCategoriaDePantallas(document.getElementById(`${prefijo}-categoria_id`).value)) {
+            return;
+        }
 
         const partes = ['Pantalla'];
 
@@ -953,7 +989,8 @@
         document.getElementById('editar-categoria_id').value      = categoriaId;
         document.getElementById('editar-tipo_producto_id').value  = tipoProductoId ?? '';
 
-        // Mostrar/ocultar marco + marca/referencia según categoría
+        // Mostrar/ocultar marco y referencia según la categoría. Marca y referencia se ponen
+        // después: toggleMarco() las borra si el producto anterior era de otra clase de categoría
         toggleMarco(categoriaId, 'editar');
         if (marco !== null) {
             const radioId = marco == 1 ? 'editar-marco-si' : 'editar-marco-no';
@@ -962,10 +999,10 @@
         document.getElementById('editar-marca').value      = marca ?? '';
         document.getElementById('editar-referencia').value = referencia ?? '';
 
-        // Nombre: va después de toggleMarco, que lo borra si la categoría no es de pantallas
-        // (para cuando se cambia de categoría en el formulario). Las pantallas lo arman con
-        // marca y referencia; el resto conserva el suyo. Antes se regeneraba siempre, y un
-        // accesorio abría con el nombre "Pantalla": al guardar quedaba renombrado.
+        // Nombre: va después de toggleMarco, que lo borra al pasar de pantallas a otra
+        // categoría (era el generado). Las pantallas lo arman con marca y referencia; el
+        // resto conserva el suyo. Antes se regeneraba siempre, y un accesorio abría con el
+        // nombre "Pantalla": al guardar quedaba renombrado.
         if (categoriasConMarco.includes(parseInt(categoriaId))) {
             generarNombrePantalla('editar');
         } else {
@@ -1343,8 +1380,14 @@
     // Si hay errores de validación, re-abrir el modal y hacer scroll al bloque de errores.
     // Los errores se quedan hasta cerrarlos con la × o volver a guardar: si se fueran
     // solos, no daría tiempo de leer qué corregir.
+    // Los campos de la categoría elegida se muestran sin borrar lo escrito: antes, en
+    // pantallas, marco, marca y referencia volvían ocultos y no se podían corregir.
     @if ($errors->any())
         document.addEventListener('DOMContentLoaded', () => {
+            if (mostrarCamposSegunCategoria(document.getElementById('crear-categoria_id').value, 'crear')) {
+                generarNombrePantalla('crear');
+            }
+
             const modal = document.getElementById('modal-producto');
             modal.classList.remove('hidden');
             const contenedor = modal.querySelector('.overflow-y-auto');

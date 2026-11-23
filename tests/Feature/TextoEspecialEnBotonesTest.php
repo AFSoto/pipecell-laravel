@@ -79,6 +79,9 @@ class TextoEspecialEnBotonesTest extends TestCase
             'estado'        => 'activo',
         ]);
 
+        // Ajustar stock y Desactivar muestran el nombre con la marca: "Cargador Apple's 20W (Apple's)"
+        $this->assertSame("Cargador Apple's 20W (Apple's)", $producto->nombre_con_marca);
+
         // Las dos vistas (tarjetas y lista) usan los mismos botones: se revisan las dos
         foreach (['tarjetas', 'lista'] as $vista) {
             $html = $this->actingAs($usuario)
@@ -86,11 +89,11 @@ class TextoEspecialEnBotonesTest extends TestCase
                 ->assertOk()
                 ->getContent();
 
-            $this->assertStringContainsString("abrirAjusteStock({$producto->id}, " . Js::from($producto->nombre) . ')', $html, "Vista {$vista}");
+            $this->assertStringContainsString("abrirAjusteStock({$producto->id}, " . Js::from($producto->nombre_con_marca) . ')', $html, "Vista {$vista}");
             $this->assertStringContainsString(Js::from($producto->descripcion)->toHtml(), $html, "Vista {$vista}");
             $this->assertStringContainsString(Js::from($producto->codigo)->toHtml(), $html, "Vista {$vista}");
             $this->assertStringContainsString(
-                'return confirm(' . Js::from("¿Desactivar «{$producto->nombre}»?") . ')',
+                'return confirm(' . Js::from("¿Desactivar «{$producto->nombre_con_marca}»?") . ')',
                 $html,
                 "Vista {$vista}"
             );

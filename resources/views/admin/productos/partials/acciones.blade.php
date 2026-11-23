@@ -5,6 +5,8 @@
     $compacto = true en la fila de la lista (solo íconos); en la tarjeta, Editar lleva texto.
     @js() escapa comillas y saltos de línea para JavaScript, y da null cuando no hay valor
     (el precio de compra es opcional: con {{ }} quedaba ", ," y Editar no funcionaba).
+    Ajustar stock y Desactivar muestran nombre_con_marca: puede haber varios productos
+    con el mismo nombre y distinta marca.
 
     En pantallas táctiles (pointer-coarse: el iPad) los botones crecen a 44 px, lo que
     pide Apple para tocar sin errar; con mouse quedan de 32 px.
@@ -44,7 +46,7 @@
 </button>
 
 {{-- Ajustar stock --}}
-<button onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre))"
+<button onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre_con_marca))"
         class="p-2 pointer-coarse:p-3.5 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl transition"
         title="Ajustar stock" aria-label="Ajustar stock">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -55,7 +57,7 @@
 {{-- Desactivar --}}
 <form method="POST"
       action="{{ route('admin.productos.destroy', $producto) }}"
-      onsubmit="return confirm(@js('¿Desactivar «' . $producto->nombre . '»?'))">
+      onsubmit="return confirm(@js('¿Desactivar «' . $producto->nombre_con_marca . '»?'))">
     @csrf
     @method('DELETE')
     {{-- La query de esta página: después de desactivar se vuelve a la misma lista --}}

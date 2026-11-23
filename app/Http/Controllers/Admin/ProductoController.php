@@ -61,11 +61,16 @@ class ProductoController extends Controller
             ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {
                     $sub->where('nombre', 'like', "%{$buscar}%")
+                        ->orWhere('marca', 'like', "%{$buscar}%")
                         ->orWhere('codigo', 'like', "%{$buscar}%");
                 });
             })
             ->when($stockBajo, fn ($q) => $q->stockBajo())
-            ->orderBy('nombre');
+            // Puede haber varios con el mismo nombre (distinta marca): salen juntos y
+            // siempre en el mismo orden, así la paginación no repite ni salta ninguno
+            ->orderBy('nombre')
+            ->orderBy('marca')
+            ->orderBy('id');
 
         // Los enlaces de página llevan la vista: si otra pestaña cambia la cookie,
         // "siguiente" sigue en esta vista y con su cantidad por página
@@ -154,7 +159,7 @@ class ProductoController extends Controller
             );
 
             return $this->volverALaLista($request, $producto->id)
-                ->with('success', "Producto \"{$producto->nombre}\" actualizado con éxito.");
+                ->with('success', "Producto \"{$producto->nombre_con_marca}\" actualizado con éxito.");
         } catch (\Exception $e) {
             return $this->volverALaLista($request, $producto->id)
                 ->with('error', 'Error al actualizar: ' . $e->getMessage());
@@ -204,7 +209,7 @@ class ProductoController extends Controller
     public function destroy(Request $request, Producto $producto)
     {
         try {
-            $nombre = $producto->nombre;
+            $nombre = $producto->nombre_con_marca;
             $this->productoService->eliminar($producto);
 
             // Sin ancla: el producto ya no está en la lista

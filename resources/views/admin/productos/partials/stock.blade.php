@@ -24,7 +24,7 @@
 @endphp
 
 <button id="stock-display-{{ $producto->id }}"
-        onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre))"
+        onclick="abrirAjusteStock({{ $producto->id }}, @js($producto->nombre_con_marca))"
         class="group flex items-center gap-1.5 {{ $margen ?? '' }} pointer-coarse:min-h-11 pointer-coarse:pr-2 hover:opacity-75 transition text-left"
         title="Ajustar stock">
     <span class="text-xs font-medium {{ $stockColor }}">{{ $stockLabel }}</span>

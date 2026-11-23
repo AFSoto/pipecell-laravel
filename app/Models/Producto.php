@@ -120,6 +120,31 @@ class Producto extends Model
         return Attribute::get(fn () => $this->stock <= $this->stock_minimo);
     }
 
+    /**
+     * La marca para mostrar aparte del nombre (etiqueta en la tarjeta y en la lista).
+     * Sirve para distinguir productos con el mismo nombre: dos "Batería iPhone 14" de
+     * distinta marca. null si no tiene marca, o si es pantalla: ahí la marca es la del
+     * celular y ya va en el nombre ("Pantalla Xiaomi 15C").
+     * Usa la categoría: en listas, cargarla con with('categoria').
+     * Ejemplo: $producto->marca_visible → "Deji"
+     */
+    protected function marcaVisible(): Attribute
+    {
+        return Attribute::get(fn () => filled($this->marca) && ! $this->esPantalla() ? $this->marca : null);
+    }
+
+    /**
+     * El nombre con la marca entre paréntesis, para los textos donde solo cabe el nombre
+     * (ajuste de stock, confirmar desactivar, avisos). Sin marca_visible, solo el nombre.
+     * Ejemplo: $producto->nombre_con_marca → "Batería iPhone 14 (Deji)"
+     */
+    protected function nombreConMarca(): Attribute
+    {
+        return Attribute::get(fn () => $this->marca_visible === null
+            ? $this->nombre
+            : "{$this->nombre} ({$this->marca_visible})");
+    }
+
     // ── Scopes ──
 
     /**

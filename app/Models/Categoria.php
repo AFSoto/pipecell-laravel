@@ -19,8 +19,8 @@ class Categoria extends Model
     /**
      * Las categorías de pantallas (displays) se reconocen porque su nombre contiene
      * esta palabra, sin importar mayúsculas (ej: "Repuestos - Pantallas"). Es la única
-     * definición: la usan productos (campo marco, marca y referencia) y reparaciones
-     * (selector "¿Se usó display?").
+     * definición: la usan productos (campo marco y referencia, marca obligatoria y nombre
+     * generado) y reparaciones (selector "¿Se usó display?").
      */
     public const PALABRA_PANTALLA = 'pantalla';
 
