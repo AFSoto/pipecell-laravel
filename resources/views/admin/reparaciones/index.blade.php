@@ -107,7 +107,11 @@
         || $fDesde || $fHasta;
 @endphp
 
-<form method="GET" action="{{ route('admin.reparaciones.index') }}" id="form-filtros">
+{{-- El buscador actualiza la lista mientras se escribe, desde 3 letras
+     (resources/js/busqueda-en-vivo.js): pide esta misma página con la búsqueda nueva y
+     reemplaza cada parte data-en-vivo="nombre" por la de la respuesta. Por eso esas
+     partes existen siempre, aunque estén vacías. Estado y periodo siguen recargando. --}}
+<form method="GET" action="{{ route('admin.reparaciones.index') }}" id="form-filtros" data-busqueda-en-vivo>
     <div class="flex flex-wrap gap-3 mb-3">
 
         {{-- Select para filtrar por estado de la reparación --}}
@@ -187,6 +191,7 @@
                 {{-- Campo para buscar por cliente, teléfono o marca --}}
                 <input type="text" name="buscar" id="input-buscar" value="{{ $fBuscar }}"
                        placeholder="Buscar por cliente, teléfono, marca..."
+                       autocomplete="off" enterkeyhint="search"
                        class="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
             </div>
 
@@ -201,37 +206,41 @@
             </button>
 
             {{-- Botón para limpiar únicamente el buscador --}}
-            @if($fBuscar)
-                <button type="button" onclick="limpiarBusqueda()"
-                        class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-500 transition"
-                        title="Limpiar búsqueda">
+            <div data-en-vivo="limpiar-busqueda" class="contents">
+                @if($fBuscar)
+                    <button type="button" onclick="limpiarBusqueda()"
+                            class="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-500 transition"
+                            title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
 
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
-            @endif
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                @endif
+            </div>
         </div>
 
         {{-- Botón para reiniciar todos los filtros --}}
-        @if($hayFiltrosExtra)
-            <a href="{{ route('admin.reparaciones.index') }}"
-               class="inline-flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition whitespace-nowrap">
+        <div data-en-vivo="limpiar-filtros" class="contents">
+            @if($hayFiltrosExtra)
+                <a href="{{ route('admin.reparaciones.index') }}"
+                   class="inline-flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition whitespace-nowrap">
 
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
 
-                Limpiar filtros
-            </a>
-        @endif
+                    Limpiar filtros
+                </a>
+            @endif
+        </div>
 
     </div>
 </form>
 
-{{-- Indicador de filtros activos --}}
+{{-- Indicador de filtros activos (aria-live: se anuncia al cambiar con la búsqueda) --}}
 <div class="flex items-center justify-between mb-6">
-    <p class="text-sm text-gray-500">
+    <p data-en-vivo="indicador" aria-live="polite" class="text-sm text-gray-500">
         @php
             $estadoLabel = match($fEstado) {
                 'en_proceso' => 'en proceso',
@@ -270,7 +279,7 @@
 </div>
 
 {{-- Tabla --}}
-<div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+<div data-en-vivo="resultados" class="bg-white rounded-2xl border border-gray-100 overflow-hidden transition-opacity">
 
     @if($reparaciones->count() > 0)
     <div class="overflow-x-auto">
@@ -304,17 +313,25 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.42 15.17l-5.1-5.1a2.5 2.5 0 010-3.54l.71-.7a2.5 2.5 0 013.54 0l5.1 5.1m-4.25 4.24l4.24-4.24m0 0l5.1 5.1a2.5 2.5 0 010 3.54l-.7.7a2.5 2.5 0 01-3.55 0l-5.1-5.1"/>
             </svg>
         </div>
-        <p class="text-gray-400 text-sm">No hay reparaciones registradas</p>
-        <p class="text-gray-300 text-xs mt-1">Crea la primera con el botón de arriba</p>
+        {{-- Con búsqueda (la en vivo sale a cada rato) no es que no haya reparaciones --}}
+        @if($fBuscar)
+            <p class="text-gray-400 text-sm">No se encontraron reparaciones con esa búsqueda</p>
+            <p class="text-gray-300 text-xs mt-1">Prueba con el nombre, el teléfono, la marca o el modelo</p>
+        @else
+            <p class="text-gray-400 text-sm">No hay reparaciones registradas</p>
+            <p class="text-gray-300 text-xs mt-1">Crea la primera con el botón de arriba</p>
+        @endif
     </div>
     @endif
 </div>
 {{-- Paginación (solo cuando hay más de una página y no hay búsqueda por texto) --}}
-@if(!request('buscar') && method_exists($reparaciones, 'hasPages') && $reparaciones->hasPages())
-<div class="mt-6 flex justify-center">
-    {{ $reparaciones->appends(request()->query())->links() }}
+<div data-en-vivo="paginacion">
+    @if(!request('buscar') && method_exists($reparaciones, 'hasPages') && $reparaciones->hasPages())
+    <div class="mt-6 flex justify-center">
+        {{ $reparaciones->appends(request()->query())->links() }}
+    </div>
+    @endif
 </div>
-@endif
 
 {{-- ============================== --}}
 {{-- MODAL - Nueva Reparación        --}}
@@ -1654,11 +1671,13 @@ function actualizarFilaEdicion(datos) {
     }
 
     /**
-     * Limpia el campo de búsqueda y envía el form (mantiene otros filtros).
+     * Limpia el campo de búsqueda y vuelve a la lista sin búsqueda (mantiene los otros
+     * filtros), sin recargar: requestSubmit() pasa por la búsqueda en vivo
+     * (resources/js/busqueda-en-vivo.js); submit() recargaría la página.
      */
     function limpiarBusqueda() {
         document.getElementById('input-buscar').value = '';
-        formFiltros.submit();
+        formFiltros.requestSubmit();
     }
 
     // ══════════════════════════════════════
@@ -2046,8 +2065,14 @@ function actualizarFilaEdicion(datos) {
         if (valor) document.getElementById(visual).value = valor.toLocaleString('es-CO');
     });
 
-    // Pintar el indicador de WhatsApp de cada fila al cargar la página
+    // Pintar el indicador de WhatsApp de cada fila al cargar la página, y a las filas que
+    // trae la búsqueda en vivo. El tiempo real trabaja sobre las filas que estén en
+    // pantalla en cada momento (filaDe, ponerseAlDia), así que no necesita nada más.
     document.querySelectorAll('tr.reparacion-row').forEach(pintarWhatsapp);
+
+    document.addEventListener('busqueda-en-vivo:actualizada', () => {
+        document.querySelectorAll('tr.reparacion-row').forEach(pintarWhatsapp);
+    });
 
     // Abrir el modal correcto según el bag de errores de validación
     @if ($errors->getBag('default')->any())

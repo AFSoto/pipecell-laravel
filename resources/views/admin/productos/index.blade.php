@@ -23,7 +23,7 @@
     <div>
         <h2 class="text-2xl font-bold text-gray-900">
             Productos
-            <span class="ml-2 text-base font-normal text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full">
+            <span data-en-vivo="total" class="ml-2 text-base font-normal text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full">
                 {{ $productos->total() }}
             </span>
         </h2>
@@ -38,12 +38,17 @@
     </button>
 </div>
 
-{{-- ── Filtros ── --}}
+{{-- ── Filtros ──
+     El buscador actualiza la lista mientras se escribe, desde 3 letras
+     (resources/js/busqueda-en-vivo.js): pide esta misma página con la búsqueda nueva y
+     reemplaza cada parte data-en-vivo="nombre" por la de la respuesta. Por eso esas
+     partes existen siempre, aunque estén vacías; las de esta fila van en "contents" para
+     no cambiar el diseño. Categoría, stock bajo y vista siguen recargando la página. --}}
 @php
     $hayFiltros = request('categoria') || request('buscar') || request('stock_bajo');
 @endphp
 
-<form method="GET" action="{{ route('admin.productos.index') }}" id="form-filtros" class="mb-6">
+<form method="GET" action="{{ route('admin.productos.index') }}" id="form-filtros" class="mb-6" data-busqueda-en-vivo>
     {{-- Botón submit oculto sin nombre — captura el Enter del campo buscar sin agregar stock_bajo=1 --}}
     <button type="submit" class="hidden"></button>
     <div class="flex flex-wrap items-center gap-3">
@@ -68,42 +73,51 @@
             <input type="text" name="buscar"
                    value="{{ request('buscar') }}"
                    placeholder="Nombre, marca o código..."
+                   autocomplete="off" enterkeyhint="search"
                    class="text-sm text-gray-700 outline-none bg-transparent w-56">
         </div>
 
-        {{-- Botón de stock bajo — toggle activo/inactivo --}}
-        @if (request('stock_bajo'))
-            <a href="{{ request()->fullUrlWithoutQuery(['stock_bajo']) }}"
-               class="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-xl transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
-                Stock bajo
-            </a>
-        @else
-            <button type="submit" name="stock_bajo" value="1"
-                    class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:border-amber-300 hover:text-amber-600 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
-                Stock bajo
-            </button>
-        @endif
+        {{-- Botón de stock bajo — toggle activo/inactivo. Activo, el botón se vuelve un
+             enlace y ya no se envía: el campo oculto hace que buscar o cambiar la categoría
+             no pierdan el filtro --}}
+        <div data-en-vivo="stock-bajo" class="contents">
+            @if (request('stock_bajo'))
+                <input type="hidden" name="stock_bajo" value="1">
+                <a href="{{ request()->fullUrlWithoutQuery(['stock_bajo']) }}"
+                   class="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-xl transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    Stock bajo
+                </a>
+            @else
+                <button type="submit" name="stock_bajo" value="1"
+                        class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:border-amber-300 hover:text-amber-600 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    Stock bajo
+                </button>
+            @endif
+        </div>
 
         {{-- Botón limpiar filtros — solo si hay filtros activos --}}
-        @if ($hayFiltros)
-            <a href="{{ route('admin.productos.index') }}"
-               class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-                Limpiar filtros
-            </a>
-        @endif
+        <div data-en-vivo="limpiar-filtros" class="contents">
+            @if ($hayFiltros)
+                <a href="{{ route('admin.productos.index') }}"
+                   class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Limpiar filtros
+                </a>
+            @endif
+        </div>
 
         {{-- Vista: tarjetas o lista. Son enlaces: conservan los filtros y vuelven a la
              página 1 (cambia cuántos van por página). El controlador la recuerda. --}}
-        <div class="ml-auto inline-flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl"
+        <div data-en-vivo="vista"
+             class="ml-auto inline-flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl"
              role="group" aria-label="Vista">
             @foreach ([
                 'tarjetas' => ['Ver como tarjetas', 'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z'],
@@ -122,23 +136,26 @@
     </div>
 </form>
 
-{{-- ── Indicador de resultados ── --}}
-@if ($hayFiltros)
-    <p class="text-sm text-gray-500 mb-4">
-        Mostrando <span class="font-medium text-gray-700">{{ $productos->total() }}</span> producto(s)
-        @if (request('categoria'))
-            en <span class="font-medium text-gray-700">{{ $categorias->find(request('categoria'))?->nombre }}</span>
-        @endif
-        @if (request('buscar'))
-            con <span class="font-medium text-gray-700">"{{ request('buscar') }}"</span>
-        @endif
-        @if (request('stock_bajo'))
-            <span class="text-amber-600 font-medium">con stock bajo</span>
-        @endif
-    </p>
-@endif
+{{-- ── Indicador de resultados (aria-live: se anuncia al cambiar con la búsqueda) ── --}}
+<div data-en-vivo="indicador" aria-live="polite">
+    @if ($hayFiltros)
+        <p class="text-sm text-gray-500 mb-4">
+            Mostrando <span class="font-medium text-gray-700">{{ $productos->total() }}</span> producto(s)
+            @if (request('categoria'))
+                en <span class="font-medium text-gray-700">{{ $categorias->find(request('categoria'))?->nombre }}</span>
+            @endif
+            @if (request('buscar'))
+                con <span class="font-medium text-gray-700">"{{ request('buscar') }}"</span>
+            @endif
+            @if (request('stock_bajo'))
+                <span class="text-amber-600 font-medium">con stock bajo</span>
+            @endif
+        </p>
+    @endif
+</div>
 
 {{-- ── Productos: se dibuja solo la vista elegida (tarjetas o lista) ── --}}
+<div data-en-vivo="resultados" class="transition-opacity">
 @if ($productos->isNotEmpty())
     @if ($vista === 'lista')
         <div data-vista="lista" class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -200,6 +217,19 @@
         @endif
     </div>
 @endif
+</div>
+
+{{-- Stock y mínimo de los productos de esta página, para "Ajustar stock" (_stockPorProducto).
+     Se reemplaza con cada búsqueda en vivo: así también tiene los productos que trae.
+     Se arma aquí y no dentro de @json(...): Blade separa @json por comas, y con una
+     expresión que las tiene se perdían los escapes de JSON_HEX_TAG.
+     (object): sin productos sale {} y no [] --}}
+@php
+    $stockPorProducto = (object) $productos->getCollection()
+        ->mapWithKeys(fn ($p) => [$p->id => ['stock' => $p->stock, 'min' => $p->stock_minimo ?? 0]])
+        ->all();
+@endphp
+<script type="application/json" id="stock-por-producto" data-en-vivo="stock-por-producto">@json($stockPorProducto)</script>
 
 
 {{-- ============================== --}}
@@ -468,8 +498,9 @@
               class="p-6 space-y-5">
             @csrf
             @method('PATCH')
-            {{-- La query de esta página: al guardar se vuelve a la misma lista --}}
-            <input type="hidden" name="volver" value="{{ request()->getQueryString() }}">
+            {{-- La query de esta página: al guardar se vuelve a la misma lista. La búsqueda
+                 en vivo lo reemplaza (data-en-vivo), así vuelve también a lo buscado --}}
+            <input type="hidden" name="volver" value="{{ request()->getQueryString() }}" data-en-vivo="volver">
 
             {{-- Errores de validación de editar (bolsa propia: ver UpdateProductoRequest) --}}
             @if ($errors->editarProducto->any())
@@ -1281,12 +1312,15 @@
     // AJUSTE RÁPIDO DE STOCK
     // ══════════════════════════════════════
 
-    // Fuente de verdad en JS — se actualiza tras cada AJAX exitoso
-    const _stockPorProducto = @json(
-        $productos->getCollection()->mapWithKeys(fn($p) => [
-            $p->id => ['stock' => $p->stock, 'min' => $p->stock_minimo ?? 0]
-        ])
-    );
+    // Fuente de verdad en JS — se actualiza tras cada AJAX exitoso. Sale del JSON
+    // stock-por-producto, y cada búsqueda en vivo le suma los productos que trae: sin eso,
+    // "Ajustar stock" de un producto traído por la búsqueda mostraba 0 unidades
+    const leerStockPorProducto = () => JSON.parse(document.getElementById('stock-por-producto').textContent);
+    const _stockPorProducto    = leerStockPorProducto();
+
+    document.addEventListener('busqueda-en-vivo:actualizada', () => {
+        Object.assign(_stockPorProducto, leerStockPorProducto());
+    });
 
     let _ajusteId         = null;
     let _ajusteStock      = 0;
