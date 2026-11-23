@@ -10,14 +10,17 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
 
 /**
- * Fotos de productos: se aceptan hasta 20 MB y 50 megapíxeles, y se guardan convertidas
- * a WebP de hasta 1600 px, derechas según la orientación EXIF del iPad (ver FotoProducto).
- * Las fotos se generan con GD; las de orientación llevan un bloque EXIF armado a mano.
+ * Fotos de productos: se aceptan hasta 10 por vez, de hasta 20 MB y 50 megapíxeles, y se
+ * guardan convertidas a WebP de hasta 1600 px, derechas según la orientación EXIF del iPad
+ * (ver FotoProducto). Las fotos se generan con GD; las de orientación llevan un bloque
+ * EXIF armado a mano.
  */
 class FotosProductoTest extends TestCase
 {
@@ -53,13 +56,56 @@ class FotosProductoTest extends TestCase
     }
 
     /** Crea un producto con estas fotos y revisa que se haya guardado sin errores. */
-    private function crearConFotos(array $imagenes): void
+    private function crearConFotos(array $imagenes): TestResponse
     {
-        $this->post(route('admin.productos.store'), $this->datosFormulario($imagenes))
+        return $this->post(route('admin.productos.store'), $this->datosFormulario($imagenes))
             ->assertRedirect(route('admin.productos.index'))
             ->assertSessionHasNoErrors()
             ->assertSessionHas('success')
             ->assertSessionMissing('error');
+    }
+
+    /**
+     * Convierte la foto con FotoProducto en otro PHP, como en un hosting que no deja subir
+     * la memoria: memory_limit de 128M e ini_set deshabilitada. Retorna lo que pasó:
+     * "WebP de 1600×1200", la excepción, o el error fatal si PHP murió.
+     */
+    private function convertirEnHostingLimitado(string $foto): string
+    {
+        $ruta = tempnam(sys_get_temp_dir(), 'foto');
+        file_put_contents($ruta, $foto);
+
+        $codigo = 'require ' . var_export(base_path('vendor/autoload.php'), true) . ';'
+            . 'try { $i = getimagesizefromstring(App\Support\FotoProducto::aWebp($argv[1])); echo "WebP de {$i[0]}×{$i[1]}"; }'
+            . ' catch (Throwable $e) { echo get_class($e), ": ", $e->getMessage(); }';
+
+        $proceso = new Process([PHP_BINARY, '-d', 'memory_limit=128M', '-d', 'disable_functions=ini_set', '-r', $codigo, $ruta]);
+        $proceso->run();
+        unlink($ruta);
+
+        return trim($proceso->getOutput() . $proceso->getErrorOutput());
+    }
+
+    /**
+     * PNG válido de un solo color, comprimido de a una fila: pesa unos KB aunque tenga
+     * muchos megapíxeles, y GD lo puede abrir de verdad (a diferencia de uno con solo el
+     * encabezado).
+     */
+    private function pngLiso(int $ancho, int $alto): string
+    {
+        $bloque = fn (string $tipo, string $datos) => pack('N', strlen($datos)) . $tipo . $datos . pack('N', crc32($tipo . $datos));
+        $zlib   = deflate_init(ZLIB_ENCODING_DEFLATE);
+        $fila   = "\0" . str_repeat("\x80\x40\x20", $ancho); // filtro 0 + un píxel RGB por cada 3 bytes
+        $datos  = '';
+
+        for ($y = 0; $y < $alto; $y++) {
+            $datos .= deflate_add($zlib, $fila, ZLIB_NO_FLUSH);
+        }
+
+        $datos .= deflate_add($zlib, '', ZLIB_FINISH);
+
+        return "\x89PNG\r\n\x1a\n" . $bloque('IHDR', pack('NNCCCCC', $ancho, $alto, 8, 2, 0, 0, 0))
+            . $bloque('IDAT', $datos) . $bloque('IEND', '');
     }
 
     /** La única foto guardada: [ruta, contenido, getimagesize del contenido]. */
@@ -119,7 +165,8 @@ class FotosProductoTest extends TestCase
 
     public function test_una_foto_del_ipad_se_guarda_en_webp_de_1600_px(): void
     {
-        $this->crearConFotos([UploadedFile::fake()->image('foto.jpg', 4032, 3024)]);
+        $this->crearConFotos([UploadedFile::fake()->image('foto.jpg', 4032, 3024)])
+            ->assertSessionHas('success', 'Producto creado con éxito.');
 
         [$path, , $info] = $this->fotoGuardada();
 
@@ -246,9 +293,53 @@ class FotosProductoTest extends TestCase
         $this->assertStringEndsWith('.webp', $path);
 
         $this->post(route('admin.productos.store'), $this->datosFormulario([UploadedFile::fake()->image('grande.jpg', 100, 100)->size(21000)], 'Otro'))
-            ->assertSessionHasErrors(['imagenes.0' => 'Cada imagen no puede superar los 20 MB.']);
+            ->assertSessionHasErrors(['imagenes.0' => 'La foto 1 pesa más de 20 MB.']);
 
         $this->assertSame(1, Producto::count());
+    }
+
+    public function test_el_aviso_dice_cual_foto_fallo(): void
+    {
+        $this->post(route('admin.productos.store'), $this->datosFormulario([
+            UploadedFile::fake()->image('bien.jpg', 100, 100),
+            UploadedFile::fake()->image('pesada.jpg', 100, 100)->size(21000),
+            UploadedFile::fake()->create('notas.pdf', 10, 'application/pdf'),
+        ]))->assertSessionHasErrors([
+            'imagenes.1' => 'La foto 2 pesa más de 20 MB.',
+            'imagenes.2' => 'La foto 3 no es una imagen válida (JPG, PNG, etc.).',
+        ]);
+
+        $this->assertSame(0, Producto::count());
+    }
+
+    public function test_mas_de_10_fotos_se_rechazan_sin_guardar_nada(): void
+    {
+        // Menos que max_file_uploads de PHP (20): si elige 25, PHP deja pasar 20 y este
+        // aviso sale igual, en vez de descartar 5 sin decir nada
+        $fotos = array_map(fn (int $i) => UploadedFile::fake()->image("foto{$i}.jpg", 20, 20), range(1, 11));
+
+        $this->post(route('admin.productos.store'), $this->datosFormulario($fotos))
+            ->assertSessionHasErrors(['imagenes' => 'Puedes subir hasta 10 fotos por vez.']);
+
+        $this->assertSame(0, Producto::count());
+        $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
+    public function test_un_envio_mas_pesado_que_post_max_size_avisa_en_espanol(): void
+    {
+        if (ini_get('post_max_size') === '0') {
+            $this->markTestSkipped('Este PHP no tiene post_max_size.');
+        }
+
+        // Así llega cuando las fotos juntas pasan de post_max_size: PHP descarta el
+        // formulario entero y Laravel corta antes de la sesión (antes: "Content Too Large")
+        $this->call('POST', route('admin.productos.store'), [], [], [], ['CONTENT_LENGTH' => 1024 ** 3])
+            ->assertStatus(413)
+            ->assertSee('Las fotos pesan demasiado')
+            ->assertSee('no se guardó nada')
+            ->assertDontSee('Content Too Large');
+
+        $this->assertSame(0, Producto::count());
     }
 
     public function test_una_foto_de_demasiada_resolucion_se_rechaza_sin_abrirla(): void
@@ -259,7 +350,7 @@ class FotosProductoTest extends TestCase
             . $bloque('IDAT', gzcompress('')) . $bloque('IEND', '');
 
         $this->post(route('admin.productos.store'), $this->datosFormulario([UploadedFile::fake()->createWithContent('enorme.png', $png)]))
-            ->assertSessionHasErrors(['imagenes.0' => 'La foto tiene demasiada resolución (máximo 50 megapíxeles; las del iPad tienen 12).']);
+            ->assertSessionHasErrors(['imagenes.0' => 'La foto 1 tiene demasiada resolución (máximo 50 megapíxeles; las del iPad tienen 12).']);
 
         $this->assertSame(0, Producto::count());
         $this->assertSame([], Storage::disk('public')->allFiles());
@@ -273,24 +364,46 @@ class FotosProductoTest extends TestCase
         $archivo = new UploadedFile($ruta, 'foto.jpg', 'image/jpeg', UPLOAD_ERR_INI_SIZE, true);
 
         $this->post(route('admin.productos.store'), $this->datosFormulario([$archivo]))
-            ->assertSessionHasErrors(['imagenes.0' => 'Una foto no se pudo subir: pesa más de lo que permite el servidor.']);
+            ->assertSessionHasErrors(['imagenes.0' => 'La foto 1 no se pudo subir: pesa más de lo que permite el servidor.']);
 
         $this->assertSame(0, Producto::count());
     }
 
-    public function test_una_foto_que_no_se_puede_convertir_se_guarda_tal_cual(): void
+    public function test_una_foto_que_no_se_puede_convertir_se_guarda_tal_cual_y_lo_avisa(): void
     {
         Exceptions::fake();
 
         // Empieza como JPEG pero el resto es basura: GD no la puede leer
         $rara = "\xFF\xD8\xFF\xE0" . str_repeat("\x00basura", 200);
 
-        $this->crearConFotos([UploadedFile::fake()->createWithContent('rara.jpg', $rara)]);
+        $this->crearConFotos([UploadedFile::fake()->createWithContent('rara.jpg', $rara)])
+            ->assertSessionHas('success', 'Producto creado con éxito. 1 foto quedó sin optimizar (se guardó con su peso original).');
 
         [$path, $contenido] = $this->fotoGuardada();
 
         $this->assertStringEndsWith('.jpg', $path);
         $this->assertSame($rara, $contenido);
         Exceptions::assertReported(RuntimeException::class);
+    }
+
+    // ── Hosting con poca memoria y sin ini_set ──
+
+    public function test_sin_ini_set_y_con_128_mb_una_foto_del_ipad_se_convierte_igual(): void
+    {
+        // Antes: "Call to undefined function ini_set()" (PHP 8 quita las funciones
+        // deshabilitadas) y ninguna foto se convertía
+        $foto = UploadedFile::fake()->image('ipad.jpg', 4032, 3024);
+
+        $this->assertSame('WebP de 1600×1200', $this->convertirEnHostingLimitado(file_get_contents($foto->getRealPath())));
+    }
+
+    public function test_si_no_alcanza_la_memoria_avisa_en_vez_de_romper_el_guardado(): void
+    {
+        // 30 MP: necesita unos 280 MB y en ese hosting hay 128. Antes se abría igual y PHP
+        // moría con "Allowed memory size exhausted": error 500 y se perdía el guardado. Ahora
+        // es una excepción, y el servicio guarda la foto original (ver el test anterior)
+        $salida = $this->convertirEnHostingLimitado($this->pngLiso(6000, 5000));
+
+        $this->assertStringStartsWith('RuntimeException: No alcanza la memoria para abrir la foto', $salida);
     }
 }

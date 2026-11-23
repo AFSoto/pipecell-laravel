@@ -14,8 +14,8 @@ use Illuminate\Foundation\Http\FormRequest;
  * La diferencia clave con StoreProductoRequest: el producto que se edita no cuenta
  * como "ya existe", ni en el código (unique) ni en el nombre (ValidaNombreUnicoProducto),
  * para que pueda guardarse con lo suyo.
- * Las fotos nuevas siguen las mismas reglas que al crear (hasta 20 MB y 50 megapíxeles;
- * se guardan en WebP, ver FotoProducto).
+ * Las fotos nuevas siguen las mismas reglas que al crear (hasta 10 por vez, de hasta
+ * 20 MB y 50 megapíxeles; se guardan en WebP, ver FotoProducto).
  */
 class UpdateProductoRequest extends FormRequest
 {
@@ -26,7 +26,9 @@ class UpdateProductoRequest extends FormRequest
      * modal de editar con ellos. En la bolsa por defecto los tomaría el modal de crear,
      * y al "corregir y guardar" se crearía un producto nuevo en vez de actualizar.
      */
-    protected $errorBag = 'editarProducto';
+    public const BOLSA_ERRORES = 'editarProducto';
+
+    protected $errorBag = self::BOLSA_ERRORES;
 
     /** Sesión: qué producto se estaba editando cuando falló (la página reabre su modal). */
     public const PRODUCTO_CON_ERRORES = 'producto_con_errores';
@@ -68,8 +70,7 @@ class UpdateProductoRequest extends FormRequest
             'precio_venta'      => ['required', 'numeric', 'min:0'],
             'stock'             => ['required', 'integer', 'min:0'],
             'stock_minimo'      => ['nullable', 'integer', 'min:0'],
-            'imagenes'          => ['nullable', 'array'],
-            'imagenes.*'        => ['image', 'max:' . FotoProducto::MAX_KB, FotoProducto::reglaResolucion()],
+            ...FotoProducto::reglas(),
         ];
     }
 
@@ -87,9 +88,7 @@ class UpdateProductoRequest extends FormRequest
             'precio_venta.min'          => 'El precio de venta no puede ser negativo.',
             'stock.required'            => 'El stock es obligatorio.',
             'stock.min'                 => 'El stock no puede ser negativo.',
-            'imagenes.*.uploaded'       => 'Una foto no se pudo subir: pesa más de lo que permite el servidor.',
-            'imagenes.*.image'          => 'Cada archivo debe ser una imagen válida (JPG, PNG, etc.).',
-            'imagenes.*.max'            => 'Cada imagen no puede superar los 20 MB.',
+            ...FotoProducto::mensajes(),
         ];
     }
 

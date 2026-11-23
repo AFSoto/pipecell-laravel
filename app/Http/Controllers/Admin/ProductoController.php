@@ -11,10 +11,12 @@ use App\Models\ProductoImagen;
 use App\Models\TipoMovimientoStock;
 use App\Models\TipoProducto;
 use App\Services\ProductoService;
+use App\Support\FotoProducto;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Controlador de Productos.
@@ -58,12 +60,17 @@ class ProductoController extends Controller
         $query = Producto::activos()
             ->with(['categoria', 'tipoProducto', 'imagenPrincipal', 'imagenes'])
             ->when($categoriaFiltro, fn ($q) => $q->deCategoria((int) $categoriaFiltro))
+            // Cada palabra tiene que estar en el nombre, la marca o el código, en cualquier
+            // orden: "iPhone 14 Deji" encuentra la "Batería iPhone 14" de la marca Deji.
+            // Se separa por espacios comunes (sin /u: un texto mal codificado no da error)
             ->when(strlen($buscar ?? '') >= 2, function ($q) use ($buscar) {
-                $q->where(function ($sub) use ($buscar) {
-                    $sub->where('nombre', 'like', "%{$buscar}%")
-                        ->orWhere('marca', 'like', "%{$buscar}%")
-                        ->orWhere('codigo', 'like', "%{$buscar}%");
-                });
+                foreach (preg_split('/\s+/', trim($buscar), -1, PREG_SPLIT_NO_EMPTY) as $palabra) {
+                    $q->where(function ($sub) use ($palabra) {
+                        $sub->where('nombre', 'like', "%{$palabra}%")
+                            ->orWhere('marca', 'like', "%{$palabra}%")
+                            ->orWhere('codigo', 'like', "%{$palabra}%");
+                    });
+                }
             })
             ->when($stockBajo, fn ($q) => $q->stockBajo())
             // Puede haber varios con el mismo nombre (distinta marca): salen juntos y
@@ -89,12 +96,15 @@ class ProductoController extends Controller
         // Editar volvió con errores: se reabre el modal de ese producto con lo que se
         // había escrito y con sus fotos (ver UpdateProductoRequest)
         $idConErrores       = $request->session()->get(UpdateProductoRequest::PRODUCTO_CON_ERRORES);
-        $productoConErrores = $idConErrores && $request->session()->get('errors')?->hasBag('editarProducto')
+        $productoConErrores = $idConErrores && $request->session()->get('errors')?->hasBag(UpdateProductoRequest::BOLSA_ERRORES)
             ? Producto::with('imagenes')->find($idConErrores)
             : null;
 
+        // Lo que acepta el PHP del servidor: el formulario revisa las fotos antes de enviar
+        $limitesFotos = FotoProducto::limitesDelServidor();
+
         return view('admin.productos.index', compact(
-            'productos', 'categorias', 'tiposProducto', 'tiposMovimiento', 'vista', 'productoConErrores'
+            'productos', 'categorias', 'tiposProducto', 'tiposMovimiento', 'vista', 'productoConErrores', 'limitesFotos'
         ));
     }
 
@@ -138,7 +148,12 @@ class ProductoController extends Controller
 
             return redirect()
                 ->route('admin.productos.index')
-                ->with('success', 'Producto creado con éxito.');
+                ->with('success', 'Producto creado con éxito.' . $this->avisoFotosSinOptimizar());
+        } catch (ValidationException $e) {
+            // Otro igual se guardó justo antes (un doble toque en Guardar, ver
+            // ProductoService::evitarRepetido): vuelve al formulario con el aviso, como
+            // cualquier error de validación. El catch de abajo lo mostraría como un error.
+            throw $e;
         } catch (\Exception $e) {
             return redirect()
                 ->route('admin.productos.index')
@@ -159,11 +174,32 @@ class ProductoController extends Controller
             );
 
             return $this->volverALaLista($request, $producto->id)
-                ->with('success', "Producto \"{$producto->nombre_con_marca}\" actualizado con éxito.");
+                ->with('success', "Producto \"{$producto->nombre_con_marca}\" actualizado con éxito." . $this->avisoFotosSinOptimizar());
+        } catch (ValidationException $e) {
+            // Como si fallara UpdateProductoRequest: los errores en su bolsa y la página
+            // reabre el modal de editar de este producto
+            $request->session()->flash(UpdateProductoRequest::PRODUCTO_CON_ERRORES, $producto->id);
+
+            throw $e->errorBag(UpdateProductoRequest::BOLSA_ERRORES);
         } catch (\Exception $e) {
             return $this->volverALaLista($request, $producto->id)
                 ->with('error', 'Error al actualizar: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Si alguna foto no se pudo convertir a WebP (ver ProductoService::guardarFoto), lo
+     * agrega al mensaje de éxito: se guardó igual, pero pesada. La causa queda en laravel.log.
+     */
+    private function avisoFotosSinOptimizar(): string
+    {
+        $cantidad = $this->productoService->fotosSinOptimizar();
+
+        return match ($cantidad) {
+            0       => '',
+            1       => ' 1 foto quedó sin optimizar (se guardó con su peso original).',
+            default => " {$cantidad} fotos quedaron sin optimizar (se guardaron con su peso original).",
+        };
     }
 
     /**

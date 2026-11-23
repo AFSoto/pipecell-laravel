@@ -10,9 +10,10 @@ use Illuminate\Foundation\Http\FormRequest;
 /**
  * Valida los datos para crear un nuevo producto.
  *
- * Fotos: cada archivo debe ser una imagen de hasta 20 MB y 50 megapíxeles. Se guarda
- * convertida a WebP liviano, así que el peso original no importa (ver FotoProducto).
- * Repetido = mismo nombre, categoría, tipo, marco y marca (ver ValidaNombreUnicoProducto).
+ * Fotos: hasta 10, cada una una imagen de hasta 20 MB y 50 megapíxeles. Se guardan
+ * convertidas a WebP liviano, así que el peso original no importa (reglas y mensajes en
+ * FotoProducto). Repetido = mismo nombre, categoría, tipo, marco y marca (ver
+ * ValidaNombreUnicoProducto).
  */
 class StoreProductoRequest extends FormRequest
 {
@@ -40,8 +41,7 @@ class StoreProductoRequest extends FormRequest
             'precio_venta'      => ['required', 'numeric', 'min:0'],
             'stock'             => ['required', 'integer', 'min:0'],
             'stock_minimo'      => ['nullable', 'integer', 'min:0'],
-            'imagenes'          => ['nullable', 'array'],
-            'imagenes.*'        => ['image', 'max:' . FotoProducto::MAX_KB, FotoProducto::reglaResolucion()],
+            ...FotoProducto::reglas(),
         ];
     }
 
@@ -63,9 +63,7 @@ class StoreProductoRequest extends FormRequest
             'stock.required'            => 'El stock es obligatorio.',
             'stock.integer'             => 'El stock debe ser un número entero.',
             'stock.min'                 => 'El stock no puede ser negativo.',
-            'imagenes.*.uploaded'       => 'Una foto no se pudo subir: pesa más de lo que permite el servidor.',
-            'imagenes.*.image'          => 'Cada archivo debe ser una imagen válida (JPG, PNG, etc.).',
-            'imagenes.*.max'            => 'Cada imagen no puede superar los 20 MB.',
+            ...FotoProducto::mensajes(),
         ];
     }
 

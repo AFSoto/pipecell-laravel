@@ -17,10 +17,10 @@ use RuntimeException;
  *   3. Se guarda en WebP con CALIDAD, conservando la transparencia de los PNG.
  * Al volver a codificar la foto se pierden los metadatos, incluida la ubicación GPS.
  *
- * Usa GD, que viene con PHP. La foto se abre completa en memoria, unos 4 bytes por píxel
- * (12 MP ≈ 64 MB): por eso MAX_PIXELES limita la resolución (la validación lo revisa con
- * reglaResolucion() antes de llegar aquí) y, mientras se convierte, memory_limit sube a
- * MEMORIA si está más bajo.
+ * Usa GD, que viene con PHP. La foto se abre completa en memoria (ver BYTES_POR_PIXEL):
+ * por eso MAX_PIXELES limita la resolución (la validación lo revisa con reglaResolucion()
+ * antes de llegar aquí), memory_limit sube a MEMORIA si está más bajo y, si aun así no
+ * alcanza, no se abre (ver asegurarMemoria()).
  */
 final class FotoProducto
 {
@@ -36,13 +36,39 @@ final class FotoProducto
     /** Resolución máxima (50 MP). Las fotos del iPad tienen 12 MP. */
     public const MAX_PIXELES = 50_000_000;
 
+    /**
+     * Fotos por guardado. Menos que max_file_uploads de PHP (20 por defecto): si se eligen
+     * más, PHP descarta las que pasan de ese número sin avisar; así la validación las ve y
+     * avisa. También acota el tiempo: cada foto tarda de 1 a 4 s en convertirse.
+     */
+    public const MAX_FOTOS = 10;
+
     private const MEMORIA = '512M';
+
+    /**
+     * Memoria que gasta abrir y convertir la foto, en bytes por píxel según el formato, más
+     * MEMORIA_FIJA y el doble del archivo. Medido con memory_get_peak_usage(true), que es lo
+     * que cuenta memory_limit: GD guarda 4 bytes por píxel y el PNG además arma una copia
+     * entera al leerlo (JPEG 12 MP = 68 MB, PNG transparente de 50 MP = 388 MB). Las cuentas
+     * dan un poco más que lo medido, para no quedarse cortas.
+     */
+    private const BYTES_POR_PIXEL = [IMAGETYPE_JPEG => 4.5, IMAGETYPE_PNG => 8.5];
+
+    /** Los demás formatos (WebP, GIF, BMP): unos 4 bytes por píxel medidos. */
+    private const BYTES_POR_PIXEL_OTROS = 6;
+
+    /** La foto achicada, la girada y el WebP: lo mismo para cualquier foto. */
+    private const MEMORIA_FIJA = 24 * 1024 * 1024;
+
+    /** Lo que se deja del envío (post_max_size) para el resto del formulario. */
+    private const MARGEN_FORMULARIO = 1024 * 1024;
 
     /**
      * Devuelve la foto convertida a WebP.
      *
      * @throws RuntimeException si no se puede convertir (GD sin WebP, formato que GD no
-     *                          lee, demasiados píxeles): quien llama decide qué hacer.
+     *                          lee, demasiados píxeles, no alcanza la memoria): quien llama
+     *                          decide qué hacer.
      */
     public static function aWebp(string $ruta): string
     {
@@ -62,7 +88,8 @@ final class FotoProducto
             throw new RuntimeException("La foto tiene demasiados píxeles ({$ancho}×{$alto}).");
         }
 
-        self::asegurarMemoria();
+        self::asegurarMemoria(self::memoriaNecesaria($ancho, $alto, $tipo, (int) @filesize($ruta)));
+        self::reiniciarTiempo();
 
         $contenido = file_get_contents($ruta);
 
@@ -120,11 +147,69 @@ final class FotoProducto
 
             if ($info !== false && $info[0] * $info[1] > self::MAX_PIXELES) {
                 $fail(sprintf(
-                    'La foto tiene demasiada resolución (máximo %d megapíxeles; las del iPad tienen 12).',
+                    'La foto :position tiene demasiada resolución (máximo %d megapíxeles; las del iPad tienen 12).',
                     intdiv(self::MAX_PIXELES, 1_000_000)
                 ));
             }
         };
+    }
+
+    /** Reglas de las fotos, las mismas al crear y al editar ('imagenes' e 'imagenes.*'). */
+    public static function reglas(): array
+    {
+        return [
+            'imagenes'   => ['nullable', 'array', 'max:' . self::MAX_FOTOS],
+            'imagenes.*' => ['image', 'max:' . self::MAX_KB, self::reglaResolucion()],
+        ];
+    }
+
+    /**
+     * Mensajes de las reglas de fotos. Dicen cuál falló: :position es 1, 2, 3... en el
+     * orden en que se eligieron (el de las miniaturas del formulario).
+     */
+    public static function mensajes(): array
+    {
+        return [
+            'imagenes.max'        => 'Puedes subir hasta :max fotos por vez.',
+            'imagenes.*.uploaded' => 'La foto :position no se pudo subir: pesa más de lo que permite el servidor.',
+            'imagenes.*.image'    => 'La foto :position no es una imagen válida (JPG, PNG, etc.).',
+            'imagenes.*.max'      => sprintf('La foto :position pesa más de %d MB.', intdiv(self::MAX_KB, 1024)),
+        ];
+    }
+
+    /**
+     * Límites que pone PHP antes de que las fotos lleguen a Laravel, para que el formulario
+     * los revise antes de enviar: si el envío pasa de post_max_size, PHP descarta el
+     * formulario entero; si una foto pasa de upload_max_filesize, llega vacía; si son más
+     * que max_file_uploads, descarta las de sobra sin avisar.
+     *
+     * @return array{porFoto: int, total: int|null, cantidad: int}
+     *   porFoto:  bytes por foto (el menor entre MAX_KB, upload_max_filesize y el total)
+     *   total:    bytes de todas las fotos juntas (post_max_size menos lo del resto del
+     *             formulario), o null si el servidor no pone límite
+     *   cantidad: fotos por guardado (el menor entre MAX_FOTOS y max_file_uploads)
+     */
+    public static function limitesDelServidor(): array
+    {
+        $envio = self::enBytes((string) ini_get('post_max_size'));
+        $total = $envio > 0 ? max(0, $envio - self::MARGEN_FORMULARIO) : null;
+
+        $porFoto = self::MAX_KB * 1024;
+        $subida  = self::enBytes((string) ini_get('upload_max_filesize'));
+        if ($subida > 0) {
+            $porFoto = min($porFoto, $subida);
+        }
+        if ($total !== null) {
+            $porFoto = min($porFoto, $total);
+        }
+
+        $archivos = (int) ini_get('max_file_uploads');
+
+        return [
+            'porFoto'  => $porFoto,
+            'total'    => $total,
+            'cantidad' => $archivos > 0 ? min(self::MAX_FOTOS, $archivos) : self::MAX_FOTOS,
+        ];
     }
 
     /**
@@ -247,13 +332,58 @@ final class FotoProducto
         return $imagen;
     }
 
-    /** Sube memory_limit a MEMORIA mientras se convierte, si está más bajo (y el hosting lo permite). */
-    private static function asegurarMemoria(): void
+    /** Bytes que necesita abrir y convertir esta foto (ver BYTES_POR_PIXEL). */
+    private static function memoriaNecesaria(int $ancho, int $alto, int $tipo, int $bytesArchivo): int
     {
-        $actual = self::enBytes((string) ini_get('memory_limit'));
+        $porPixel = self::BYTES_POR_PIXEL[$tipo] ?? self::BYTES_POR_PIXEL_OTROS;
 
-        if ($actual !== -1 && $actual < self::enBytes(self::MEMORIA)) {
+        return (int) ceil($ancho * $alto * $porPixel) + 2 * $bytesArchivo + self::MEMORIA_FIJA;
+    }
+
+    /**
+     * Sube memory_limit a MEMORIA si está más bajo y revisa que alcance para la foto.
+     *
+     * Si no alcanza, lanza RuntimeException antes de abrirla: abrirla igual terminaba en
+     * "Allowed memory size exhausted", un error fatal que no se puede atrapar y que perdía
+     * el guardado entero. Pasa si el hosting no deja subir memory_limit: ini_set
+     * deshabilitada o un tope propio.
+     *
+     * @throws RuntimeException
+     */
+    private static function asegurarMemoria(int $necesaria): void
+    {
+        // function_exists: PHP 8 quita del todo las funciones deshabilitadas
+        // (disable_functions), y llamarla daba un Error que el @ no evita
+        $limite = self::enBytes((string) ini_get('memory_limit'));
+
+        if ($limite !== -1 && $limite < self::enBytes(self::MEMORIA) && function_exists('ini_set')) {
             @ini_set('memory_limit', self::MEMORIA);
+            $limite = self::enBytes((string) ini_get('memory_limit'));
+        }
+
+        $usada = memory_get_usage(true);
+
+        if ($limite !== -1 && $usada + $necesaria > $limite) {
+            throw new RuntimeException(sprintf(
+                'No alcanza la memoria para abrir la foto: necesita unos %d MB y quedan %d MB (memory_limit = %s).',
+                intdiv($necesaria, 1048576),
+                intdiv(max(0, $limite - $usada), 1048576),
+                ini_get('memory_limit')
+            ));
+        }
+    }
+
+    /**
+     * Reinicia el contador de max_execution_time para esta foto (set_time_limit() empieza a
+     * contar de nuevo): 10 fotos grandes seguidas pueden pasar de 30 s, y el guardado se
+     * cortaba a la mitad. Sin límite (0, como en la consola) no se toca, para no ponerle uno.
+     */
+    private static function reiniciarTiempo(): void
+    {
+        $segundos = (int) ini_get('max_execution_time');
+
+        if ($segundos > 0 && function_exists('set_time_limit')) {
+            @set_time_limit($segundos);
         }
     }
 

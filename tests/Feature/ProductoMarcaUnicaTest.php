@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Http\Requests\StoreProductoRequest;
+use App\Http\Requests\UpdateProductoRequest;
 use App\Models\Categoria;
 use App\Models\Producto;
+use App\Models\ProductoImagen;
 use App\Models\TipoProducto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Js;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
@@ -13,7 +18,8 @@ use Tests\TestCase;
 /**
  * Productos repetidos: el nombre se puede repetir si la marca es distinta (dos "Batería
  * iPhone 14" de distinta marca). Mismo nombre y misma marca, o los dos sin marca, sigue
- * siendo repetido (ver Concerns\ValidaNombreUnicoProducto).
+ * siendo repetido (ver App\Support\ProductoRepetido). Se revisa al validar y otra vez
+ * justo antes de guardar, por si entre medio entró otro igual (un doble toque en Guardar).
  *
  * La base ya no tiene índice único: un producto desactivado no impide crearlo otra vez.
  * Las mayúsculas ("Deji" / "DEJI") no se prueban aquí: SQLite las distingue y MySQL no.
@@ -188,6 +194,49 @@ class ProductoMarcaUnicaTest extends TestCase
             ->assertSessionMissing('error');
     }
 
+    // ── Doble toque en Guardar: otro igual se guarda entre la validación y el guardado ──
+
+    public function test_si_otro_igual_se_guarda_justo_despues_de_validar_no_queda_repetido(): void
+    {
+        Storage::fake('public');
+        $lista = route('admin.productos.index');
+
+        // Como el segundo envío de un doble toque: el otro termina de guardarse justo
+        // después de que este pasó la validación, cuando ella ya no lo puede ver
+        $this->app->afterResolving(StoreProductoRequest::class, fn () => $this->crearBateria('Deji'));
+
+        $this->from($lista)
+            ->post(route('admin.productos.store'), $this->datosBateria([
+                'marca'    => 'Deji',
+                'imagenes' => [UploadedFile::fake()->image('bateria.jpg', 800, 600)],
+            ]))
+            ->assertRedirect($lista)
+            ->assertSessionHasErrors(['nombre' => 'Ya existe «Batería iPhone 14» de la marca «Deji».'])
+            ->assertSessionMissing('error');
+
+        $this->assertSame(1, Producto::count());
+        $this->assertSame(0, ProductoImagen::count());
+        $this->assertSame([], Storage::disk('public')->allFiles(), 'La foto de este envío no debía quedar guardada');
+    }
+
+    public function test_al_editar_si_otro_igual_se_guarda_justo_despues_de_validar_vuelve_al_modal_con_el_aviso(): void
+    {
+        $ampsentrix = $this->crearBateria('Ampsentrix');
+        $lista      = route('admin.productos.index');
+
+        $this->app->afterResolving(UpdateProductoRequest::class, fn () => $this->crearBateria('Deji'));
+
+        // Como si fallara la validación de editar: su bolsa de errores y el producto para reabrir el modal
+        $this->from($lista)
+            ->patch(route('admin.productos.update', $ampsentrix), $this->datosBateria(['marca' => 'Deji']))
+            ->assertRedirect($lista)
+            ->assertSessionHasErrorsIn('editarProducto', ['nombre' => 'Ya existe «Batería iPhone 14» de la marca «Deji».'])
+            ->assertSessionHas(UpdateProductoRequest::PRODUCTO_CON_ERRORES, $ampsentrix->id)
+            ->assertSessionMissing('error');
+
+        $this->assertSame('Ampsentrix', $ampsentrix->fresh()->marca);
+    }
+
     // ── Desactivados (antes los bloqueaba el índice único de la base) ──
 
     public function test_un_producto_desactivado_no_impide_crearlo_otra_vez(): void
@@ -293,6 +342,27 @@ class ProductoMarcaUnicaTest extends TestCase
         $html = $this->get(route('admin.productos.index', ['vista' => 'lista', 'buscar' => 'Deji']))->assertOk()->getContent();
 
         $this->assertStringContainsString("abrirAjusteStock({$deji->id},", $html);
+        $this->assertStringNotContainsString("abrirAjusteStock({$ampsentrix->id},", $html);
+    }
+
+    public function test_el_buscador_encuentra_con_nombre_y_marca_juntos_en_cualquier_orden(): void
+    {
+        $deji       = $this->crearBateria('Deji');
+        $ampsentrix = $this->crearBateria('Ampsentrix');
+        $buscar     = fn (string $texto) => $this->get(route('admin.productos.index', ['vista' => 'lista', 'buscar' => $texto]))
+            ->assertOk()->getContent();
+
+        foreach (['iPhone 14 Deji', 'Deji iPhone', '  deji   14 '] as $texto) {
+            $html = $buscar($texto);
+
+            $this->assertStringContainsString("abrirAjusteStock({$deji->id},", $html, "«{$texto}»");
+            $this->assertStringNotContainsString("abrirAjusteStock({$ampsentrix->id},", $html, "«{$texto}»");
+        }
+
+        // Tienen que estar todas las palabras: ninguna es Deji y Ampsentrix a la vez
+        $html = $buscar('Deji Ampsentrix');
+
+        $this->assertStringNotContainsString("abrirAjusteStock({$deji->id},", $html);
         $this->assertStringNotContainsString("abrirAjusteStock({$ampsentrix->id},", $html);
     }
 

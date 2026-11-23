@@ -210,6 +210,10 @@
     // formulario (errores en la bolsa por defecto). Si falló editar, old() trae los
     // datos de la edición y no deben aparecer aquí (ver UpdateProductoRequest::$errorBag).
     $viejo = fn (string $campo, $defecto = null) => $errors->any() ? old($campo, $defecto) : $defecto;
+
+    // Límites de fotos de este servidor (FotoProducto::limitesDelServidor), en MB: "20", "7,5"
+    $enMB = fn (int $bytes) => rtrim(rtrim(number_format($bytes / 1048576, 1, ',', '.'), '0'), ',');
+    $textoLimiteFotos = "hasta {$limitesFotos['cantidad']}, máx. {$enMB($limitesFotos['porFoto'])} MB c/u";
 @endphp
 <div id="modal-producto" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/50"
@@ -230,7 +234,8 @@
             </button>
         </div>
 
-        <form method="POST"
+        <form id="form-crear-producto"
+              method="POST"
               action="{{ route('admin.productos.store') }}"
               enctype="multipart/form-data"
               class="p-6 space-y-5">
@@ -404,9 +409,10 @@
                 </div>
             </div>
 
-            {{-- Imágenes: hasta 20 MB cada una; se guardan en WebP liviano (FotoProducto) --}}
+            {{-- Imágenes: hasta 10 de hasta 20 MB; se guardan en WebP liviano (FotoProducto).
+                 aviso-imagenes-*: lo que el servidor rechazaría, antes de enviar (problemasDeFotos) --}}
             <div>
-                <label class="text-xs text-gray-500 mb-1 block">Imágenes (máx. 20 MB c/u)</label>
+                <label for="input-imagenes-crear" class="text-xs text-gray-500 mb-1 block">Imágenes ({{ $textoLimiteFotos }})</label>
                 <input type="file" name="imagenes[]" id="input-imagenes-crear"
                        multiple accept="image/*"
                        onchange="mostrarPreviewImagenes(this, 'preview-imagenes-crear')"
@@ -414,6 +420,7 @@
 
                 {{-- Preview de imágenes seleccionadas --}}
                 <div id="preview-imagenes-crear" class="mt-3 flex flex-wrap gap-2"></div>
+                <ul id="aviso-imagenes-crear" role="alert" class="hidden mt-2 space-y-0.5 text-xs text-red-600"></ul>
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-2">
@@ -614,14 +621,15 @@
                 <div id="imagenes-existentes" class="flex flex-wrap gap-2 mb-3"></div>
             </div>
 
-            {{-- Agregar imágenes nuevas --}}
+            {{-- Agregar imágenes nuevas (ver el modal de crear) --}}
             <div>
-                <label class="text-xs text-gray-500 mb-1 block">Agregar imágenes nuevas (máx. 20 MB c/u)</label>
+                <label for="input-imagenes-editar" class="text-xs text-gray-500 mb-1 block">Agregar imágenes nuevas ({{ $textoLimiteFotos }})</label>
                 <input type="file" name="imagenes[]" id="input-imagenes-editar"
                        multiple accept="image/*"
                        onchange="mostrarPreviewImagenes(this, 'preview-imagenes-editar')"
                        class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100">
                 <div id="preview-imagenes-editar" class="mt-3 flex flex-wrap gap-2"></div>
+                <ul id="aviso-imagenes-editar" role="alert" class="hidden mt-2 space-y-0.5 text-xs text-red-600"></ul>
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-2">
@@ -886,66 +894,183 @@
     }
 
     // ══════════════════════════════════════
-    // PREVIEW DE IMÁGENES AL SELECCIONAR
+    // FOTOS ELEGIDAS: MINIATURAS Y LÍMITES
+    // ══════════════════════════════════════
+
+    // Lo que acepta el PHP del servidor (FotoProducto::limitesDelServidor): porFoto y total
+    // en bytes (total null = sin límite), cantidad = fotos por guardado. Se revisa antes de
+    // enviar: si el servidor las rechaza, el formulario vuelve sin las fotos, y si el envío
+    // entero pasa de post_max_size se pierde todo lo escrito.
+    const LIMITES_FOTOS = @js($limitesFotos);
+
+    /** Bytes a "24,6 MB". */
+    function enMB(bytes) {
+        return `${(bytes / 1048576).toLocaleString('es-CO', { maximumFractionDigits: 1 })} MB`;
+    }
+
+    /**
+     * Lo que el servidor rechazaría de estas fotos, en frases para mostrar: una que pesa
+     * demasiado (con su nombre), más fotos de las permitidas o demasiado peso entre todas.
+     * Vacío si se pueden enviar.
+     *
+     * @param {File[]} archivos
+     * @returns {string[]}
+     */
+    function problemasDeFotos(archivos) {
+        const problemas = archivos
+            .filter(archivo => archivo.size > LIMITES_FOTOS.porFoto)
+            .map(archivo => `«${archivo.name}» pesa ${enMB(archivo.size)}; el máximo por foto es ${enMB(LIMITES_FOTOS.porFoto)}.`);
+
+        if (archivos.length > LIMITES_FOTOS.cantidad) {
+            problemas.push(`Elegiste ${archivos.length} fotos; puedes subir hasta ${LIMITES_FOTOS.cantidad} por vez.`);
+        }
+
+        const total = archivos.reduce((suma, archivo) => suma + archivo.size, 0);
+        if (LIMITES_FOTOS.total !== null && total > LIMITES_FOTOS.total) {
+            problemas.push(`Las fotos suman ${enMB(total)} y el servidor acepta hasta ${enMB(LIMITES_FOTOS.total)} por envío. Quita algunas y agrégalas después editando el producto.`);
+        }
+
+        return problemas;
+    }
+
+    /** Muestra debajo de las fotos (aviso-imagenes-*) lo que hay que cambiar; nada si está bien. */
+    function mostrarProblemasDeFotos(input, problemas) {
+        const aviso = document.getElementById(input.id.replace('input-', 'aviso-'));
+
+        // textContent: el nombre del archivo lo puso quien tomó la foto
+        aviso.replaceChildren(...problemas.map(texto => {
+            const item = document.createElement('li');
+            item.textContent = texto;
+            return item;
+        }));
+        aviso.classList.toggle('hidden', problemas.length === 0);
+    }
+
+    /** Vacía las miniaturas y libera sus fotos de la memoria del navegador. */
+    function limpiarPreviewImagenes(contenedor) {
+        contenedor.querySelectorAll('img').forEach(imagen => URL.revokeObjectURL(imagen.src));
+        contenedor.replaceChildren();
+    }
+
+    /**
+     * Dibuja las miniaturas de las fotos elegidas, en el mismo orden en que se envían, y
+     * debajo lo que el servidor rechazaría. La que pesa demasiado queda con borde rojo.
+     *
+     * Se dibujan todas de nuevo cada vez que cambia la selección (al elegir y al quitar
+     * una): así cada × apunta siempre a su foto. Antes cada miniatura guardaba la posición
+     * que tenía al elegir, y después de quitar una la × de otra quitaba la foto equivocada.
+     *
+     * URL.createObjectURL y no FileReader: es instantáneo y no copia la foto (FileReader
+     * armaba un texto de unos 27 MB por cada foto de 20 MB, pesado para el iPad).
+     *
+     * La × se ve siempre en pantallas táctiles (pointer-coarse): en Tailwind 4 el hover
+     * solo existe con mouse, y en el iPad quedaba invisible.
+     *
+     * @param {HTMLInputElement} input     El input[type=file]
+     * @param {string}           previewId ID del contenedor de miniaturas
+     */
+    function mostrarPreviewImagenes(input, previewId) {
+        const contenedor = document.getElementById(previewId);
+        limpiarPreviewImagenes(contenedor);
+
+        const archivos = Array.from(input.files);
+
+        archivos.forEach((archivo, indice) => {
+            const miniatura = document.createElement('div');
+            miniatura.className = 'relative w-20 h-20 rounded-xl overflow-hidden border-2 group '
+                + (archivo.size > LIMITES_FOTOS.porFoto ? 'border-red-400' : 'border-gray-200');
+
+            const imagen = document.createElement('img');
+            imagen.src       = URL.createObjectURL(archivo);
+            imagen.alt       = archivo.name;
+            imagen.className = 'w-full h-full object-cover';
+
+            const quitar = document.createElement('button');
+            quitar.type        = 'button';
+            quitar.textContent = '×';
+            quitar.title       = 'Quitar esta foto';
+            quitar.setAttribute('aria-label', `Quitar ${archivo.name}`);
+            quitar.className = 'absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition font-bold leading-none';
+            quitar.addEventListener('click', () => quitarPreview(input, previewId, indice));
+
+            miniatura.append(imagen, quitar);
+            contenedor.append(miniatura);
+        });
+
+        mostrarProblemasDeFotos(input, problemasDeFotos(archivos));
+    }
+
+    /**
+     * Quita una foto de las elegidas y vuelve a dibujar las miniaturas.
+     * FileList no se puede cambiar: se arma otra con DataTransfer sin esa foto.
+     *
+     * @param {HTMLInputElement} input     El input[type=file]
+     * @param {string}           previewId ID del contenedor de miniaturas
+     * @param {number}           indice    Posición de la foto en input.files
+     */
+    function quitarPreview(input, previewId, indice) {
+        const restantes = new DataTransfer();
+        Array.from(input.files).forEach((archivo, i) => {
+            if (i !== indice) restantes.items.add(archivo);
+        });
+        input.files = restantes.files;
+
+        mostrarPreviewImagenes(input, previewId);
+    }
+
+    // ══════════════════════════════════════
+    // GUARDAR UNA SOLA VEZ
     // ══════════════════════════════════════
 
     /**
-     * Genera thumbnails de las imágenes seleccionadas en el input file.
-     * Cada thumbnail tiene un botón X para quitarlo del FileList.
-     *
-     * @param {HTMLInputElement} input     El input[type=file]
-     * @param {string}           previewId ID del contenedor de thumbnails
+     * Crear y editar. Al tocar Guardar:
+     *   - si el servidor rechazaría las fotos, no se envía y se avisa debajo de ellas
+     *     (sin perder lo escrito);
+     *   - si no, el botón queda en «Guardando…» y deshabilitado hasta que llega la
+     *     respuesta. Las fotos tardan unos segundos en convertirse, y un segundo toque
+     *     mandaba otro envío: el producto quedaba creado dos veces. El servidor también
+     *     lo revisa (ProductoService::evitarRepetido).
      */
-    function mostrarPreviewImagenes(input, previewId) {
-        const container = document.getElementById(previewId);
-        container.innerHTML = ''; // Limpiar previews anteriores
+    function protegerEnvio(form) {
+        const input       = form.querySelector('input[type="file"]');
+        const boton       = form.querySelector('button[type="submit"]');
+        const textoBoton  = boton.textContent.trim();
 
-        // FileList no es un array real, se convierte con Array.from
-        Array.from(input.files).forEach((file, index) => {
-            const reader = new FileReader();
+        form.addEventListener('submit', evento => {
+            const problemas = problemasDeFotos(Array.from(input.files));
 
-            reader.onload = (e) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200 group';
-                wrapper.dataset.index = index;
+            if (problemas.length > 0) {
+                evento.preventDefault();
+                mostrarProblemasDeFotos(input, problemas);
+                input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                return;
+            }
 
-                wrapper.innerHTML = `
-                    <img src="${e.target.result}" class="w-full h-full object-cover">
-                    <button type="button"
-                            onclick="quitarPreview(this, '${input.id}', ${index})"
-                            class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition font-bold leading-none">
-                        ×
-                    </button>`;
+            if (form.dataset.enviando) {
+                evento.preventDefault();
+                return;
+            }
 
-                container.appendChild(wrapper);
-            };
+            form.dataset.enviando = '1';
+            boton.disabled        = true;
+            boton.textContent     = 'Guardando…';
+        });
 
-            reader.readAsDataURL(file);
+        // Al volver atrás, Safari (y otros) muestran la página tal como quedó: con el botón
+        // en «Guardando…». persisted = vino de esa copia guardada.
+        window.addEventListener('pageshow', evento => {
+            if (!evento.persisted) return;
+
+            delete form.dataset.enviando;
+            boton.disabled    = false;
+            boton.textContent = textoBoton;
         });
     }
 
-    /**
-     * Quita una imagen del preview y del FileList.
-     * Como FileList es inmutable, se crea un nuevo DataTransfer con los archivos restantes.
-     *
-     * @param {HTMLButtonElement} btn     Botón X que se presionó
-     * @param {string}            inputId ID del input[type=file]
-     * @param {number}            index   Índice del archivo a quitar
-     */
-    function quitarPreview(btn, inputId, index) {
-        const input   = document.getElementById(inputId);
-        const wrapper = btn.closest('[data-index]');
-
-        // Construir nuevo FileList sin el archivo eliminado
-        const dt = new DataTransfer();
-        Array.from(input.files).forEach((file, i) => {
-            if (i !== index) dt.items.add(file);
-        });
-        input.files = dt.files;
-
-        // Quitar el thumbnail del DOM
-        wrapper.remove();
-    }
+    document.addEventListener('DOMContentLoaded', () => {
+        protegerEnvio(document.getElementById('form-crear-producto'));
+        protegerEnvio(document.getElementById('form-editar-producto'));
+    });
 
     // ══════════════════════════════════════
     // MODAL DE EDICIÓN DE PRODUCTO
@@ -1017,9 +1142,11 @@
         document.getElementById('editar-precio_venta').value         = precioVenta ?? '';
         document.getElementById('editar-precio_venta_visual').value  = conPuntos(precioVenta);
 
-        // Limpiar previews de imágenes nuevas de una edición anterior
-        document.getElementById('preview-imagenes-editar').innerHTML = '';
-        document.getElementById('input-imagenes-editar').value       = '';
+        // Limpiar las fotos nuevas (y su aviso) de una edición anterior
+        const inputFotos = document.getElementById('input-imagenes-editar');
+        limpiarPreviewImagenes(document.getElementById('preview-imagenes-editar'));
+        inputFotos.value = '';
+        mostrarProblemasDeFotos(inputFotos, []);
 
         // Renderizar imágenes existentes con botón de eliminar
         const contenedor = document.getElementById('imagenes-existentes');
@@ -1037,7 +1164,8 @@
                     ${img.es_principal ? '<span class="absolute bottom-0 left-0 right-0 bg-blue-500/80 text-white text-center text-[10px] py-0.5">Principal</span>' : ''}
                     <button type="button"
                             onclick="eliminarImagenExistente(${img.id}, this)"
-                            class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition font-bold leading-none">
+                            title="Eliminar esta foto" aria-label="Eliminar esta foto"
+                            class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition font-bold leading-none">
                         ×
                     </button>`;
 

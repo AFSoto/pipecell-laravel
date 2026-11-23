@@ -2,15 +2,18 @@
 
 namespace App\Services;
 
+use App\Models\Categoria;
 use App\Models\MovimientoStock;
 use App\Models\Producto;
 use App\Models\ProductoImagen;
 use App\Models\TipoMovimientoStock;
 use App\Support\FotoProducto;
+use App\Support\ProductoRepetido;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Service para la lógica de negocio de productos.
@@ -26,44 +29,60 @@ use Illuminate\Support\Str;
  */
 class ProductoService
 {
+    /** Fotos del último crear() o actualizar() que quedaron con su peso original (ver guardarFoto()). */
+    private int $fotosSinOptimizar = 0;
+
     /**
      * Crea un nuevo producto con sus imágenes opcionales.
      *
-     * Todo dentro de una transacción para que si falla la subida
-     * de alguna imagen, el producto no quede creado sin imágenes
-     * ni haya imágenes colgadas sin registro en la BD.
+     * Las fotos se convierten y se escriben antes de abrir la transacción: tardan de 1 a
+     * 4 s cada una, y así la transacción (y el bloqueo de evitarRepetido()) dura
+     * milisegundos. Si después falla algo, se borran: no quedan archivos sueltos ni un
+     * producto creado sin sus fotos.
      *
      * @param array              $datos    Datos validados del StoreProductoRequest
      * @param UploadedFile[]|null $imagenes Archivos subidos (campo 'imagenes')
+     *
+     * @throws ValidationException si mientras tanto se guardó otro igual (ver evitarRepetido())
      */
     public function crear(array $datos, ?array $imagenes = null): Producto
     {
-        return DB::transaction(function () use ($datos, $imagenes) {
+        $fotos = $this->guardarFotos($imagenes ?? []);
 
-            // ── 1. Crear el producto ──
-            $producto = Producto::create([
-                'categoria_id'     => $datos['categoria_id'],
-                'tipo_producto_id' => $datos['tipo_producto_id'] ?? null,
-                'codigo'           => $datos['codigo'] ?? null,
-                'nombre'           => $datos['nombre'],
-                'descripcion'      => $datos['descripcion'] ?? null,
-                'marco'            => $datos['marco'] ?? null,
-                'marca'            => $datos['marca'] ?? null,
-                'referencia'       => $datos['referencia'] ?? null,
-                'precio_compra'    => $datos['precio_compra'] ?? null, // opcional: null = sin precio de compra
-                'precio_venta'     => $datos['precio_venta'],
-                'stock'            => $datos['stock'] ?? 0,
-                'stock_minimo'     => $datos['stock_minimo'] ?? 3,
-                'estado'           => 'activo',
-            ]);
+        try {
+            return DB::transaction(function () use ($datos, $fotos) {
+                $this->evitarRepetido($datos);
 
-            // ── 2. Guardar imágenes si se enviaron ──
-            if (! empty($imagenes)) {
-                $this->guardarImagenes($producto, $imagenes, marcarPrimeraComoPrincipal: true);
-            }
+                $producto = $this->crearProducto($datos);
+                $this->registrarFotos($producto, $fotos);
 
-            return $producto;
-        });
+                return $producto;
+            });
+        } catch (\Throwable $e) {
+            $this->borrarFotos($fotos);
+
+            throw $e;
+        }
+    }
+
+    /** Inserta el producto con los datos validados. */
+    private function crearProducto(array $datos): Producto
+    {
+        return Producto::create([
+            'categoria_id'     => $datos['categoria_id'],
+            'tipo_producto_id' => $datos['tipo_producto_id'] ?? null,
+            'codigo'           => $datos['codigo'] ?? null,
+            'nombre'           => $datos['nombre'],
+            'descripcion'      => $datos['descripcion'] ?? null,
+            'marco'            => $datos['marco'] ?? null,
+            'marca'            => $datos['marca'] ?? null,
+            'referencia'       => $datos['referencia'] ?? null,
+            'precio_compra'    => $datos['precio_compra'] ?? null, // opcional: null = sin precio de compra
+            'precio_venta'     => $datos['precio_venta'],
+            'stock'            => $datos['stock'] ?? 0,
+            'stock_minimo'     => $datos['stock_minimo'] ?? 3,
+            'estado'           => 'activo',
+        ]);
     }
 
     /**
@@ -71,45 +90,89 @@ class ProductoService
      *
      * Las imágenes existentes NO se eliminan — el usuario las borra
      * individualmente con eliminarImagen(). Esto evita pérdidas accidentales.
+     * Las fotos nuevas se guardan igual que en crear(): antes de la transacción, y se
+     * borran si después falla algo.
      *
      * @param Producto           $producto Instancia a actualizar
      * @param array              $datos    Datos validados del UpdateProductoRequest
      * @param UploadedFile[]|null $imagenes Archivos nuevos a agregar (opcional)
+     *
+     * @throws ValidationException si mientras tanto se guardó otro igual (ver evitarRepetido())
      */
     public function actualizar(Producto $producto, array $datos, ?array $imagenes = null): Producto
     {
-        return DB::transaction(function () use ($producto, $datos, $imagenes) {
+        $fotos = $this->guardarFotos($imagenes ?? []);
 
-            // Actualizar los campos del producto
-            $producto->update([
-                'categoria_id'     => $datos['categoria_id'],
-                'tipo_producto_id' => $datos['tipo_producto_id'] ?? null,
-                'codigo'           => $datos['codigo'] ?? null,
-                'nombre'           => $datos['nombre'],
-                'descripcion'      => $datos['descripcion'] ?? null,
-                'marco'            => $datos['marco'] ?? null,
-                'marca'            => $datos['marca'] ?? null,
-                'referencia'       => $datos['referencia'] ?? null,
-                'precio_compra'    => $datos['precio_compra'] ?? null, // vaciar el campo deja el producto sin precio de compra
-                'precio_venta'     => $datos['precio_venta'],
-                'stock'            => $datos['stock'],
-                'stock_minimo'     => $datos['stock_minimo'] ?? 3,
-            ]);
+        try {
+            return DB::transaction(function () use ($producto, $datos, $fotos) {
+                $this->evitarRepetido($datos, $producto->id);
 
-            // Si vienen imágenes nuevas, agregarlas y convertir la primera en principal
-            if (! empty($imagenes)) {
-                // Quitar la marca de principal a la imagen actual para que la nueva tome su lugar
-                $producto->imagenes()->where('es_principal', true)->update(['es_principal' => false]);
+                $this->actualizarProducto($producto, $datos);
 
-                $this->guardarImagenes(
-                    $producto,
-                    $imagenes,
-                    marcarPrimeraComoPrincipal: true
-                );
-            }
+                // Las fotos nuevas se agregan y la primera pasa a ser la principal
+                if ($fotos !== []) {
+                    $producto->imagenes()->where('es_principal', true)->update(['es_principal' => false]);
+                    $this->registrarFotos($producto, $fotos);
+                }
 
-            return $producto->fresh(['categoria', 'imagenPrincipal']);
-        });
+                return $producto->fresh(['categoria', 'imagenPrincipal']);
+            });
+        } catch (\Throwable $e) {
+            $this->borrarFotos($fotos);
+
+            throw $e;
+        }
+    }
+
+    /** Cambia los campos del producto por los validados. */
+    private function actualizarProducto(Producto $producto, array $datos): void
+    {
+        $producto->update([
+            'categoria_id'     => $datos['categoria_id'],
+            'tipo_producto_id' => $datos['tipo_producto_id'] ?? null,
+            'codigo'           => $datos['codigo'] ?? null,
+            'nombre'           => $datos['nombre'],
+            'descripcion'      => $datos['descripcion'] ?? null,
+            'marco'            => $datos['marco'] ?? null,
+            'marca'            => $datos['marca'] ?? null,
+            'referencia'       => $datos['referencia'] ?? null,
+            'precio_compra'    => $datos['precio_compra'] ?? null, // vaciar el campo deja el producto sin precio de compra
+            'precio_venta'     => $datos['precio_venta'],
+            'stock'            => $datos['stock'],
+            'stock_minimo'     => $datos['stock_minimo'] ?? 3,
+        ]);
+    }
+
+    /**
+     * Cuántas fotos del último crear() o actualizar() no se pudieron convertir y quedaron
+     * con su peso original. El controlador lo avisa; la causa queda en laravel.log.
+     */
+    public function fotosSinOptimizar(): int
+    {
+        return $this->fotosSinOptimizar;
+    }
+
+    /**
+     * Vuelve a revisar que no esté repetido (ver ProductoRepetido), ya dentro de la
+     * transacción y justo antes de escribir. La validación lo revisó antes, pero entre la
+     * validación y este momento pudo guardarse otro igual: un doble toque en Guardar manda
+     * dos envíos casi juntos, y la base no tiene índice único que lo frene.
+     *
+     * Bloquear la fila de la categoría pone en fila los guardados de esa categoría: el
+     * segundo espera a que el primero termine (milisegundos: las fotos ya se guardaron
+     * antes) y entonces lo ve.
+     *
+     * @throws ValidationException con el mismo mensaje que da la validación
+     */
+    private function evitarRepetido(array $datos, ?int $ignorarId = null): void
+    {
+        Categoria::whereKey($datos['categoria_id'])->lockForUpdate()->first();
+
+        $mensaje = ProductoRepetido::buscar($datos, $ignorarId, bloquear: true);
+
+        if ($mensaje !== null) {
+            throw ValidationException::withMessages(['nombre' => $mensaje]);
+        }
     }
 
     /**
@@ -226,27 +289,50 @@ class ProductoService
     }
 
     /**
-     * Guarda un array de archivos en storage y crea los registros en BD.
+     * Convierte y escribe las fotos en storage/app/public/productos/, en el orden en que
+     * llegaron, y retorna sus rutas. Todavía no tienen registro en la BD (registrarFotos()).
      *
-     * Método privado de apoyo para no repetir lógica entre crear() y actualizar().
+     * Si una no se puede escribir, borra las que ya escribió y lanza la excepción: no
+     * quedan archivos sueltos.
      *
-     * @param Producto       $producto                Producto dueño de las imágenes
-     * @param UploadedFile[] $imagenes                Array de archivos subidos
-     * @param bool           $marcarPrimeraComoPrincipal Si la primera imagen debe ser la principal
+     * @param  UploadedFile[]  $archivos
+     * @return string[]
      */
-    private function guardarImagenes(
-        Producto $producto,
-        array $imagenes,
-        bool $marcarPrimeraComoPrincipal = false
-    ): void {
-        foreach ($imagenes as $indice => $archivo) {
+    private function guardarFotos(array $archivos): array
+    {
+        $this->fotosSinOptimizar = 0;
+        $rutas = [];
+
+        try {
+            foreach ($archivos as $archivo) {
+                $rutas[] = $this->guardarFoto($archivo);
+            }
+        } catch (\Throwable $e) {
+            $this->borrarFotos($rutas);
+
+            throw $e;
+        }
+
+        return $rutas;
+    }
+
+    /** Crea los registros de las fotos ya guardadas; la primera queda como principal. */
+    private function registrarFotos(Producto $producto, array $rutas): void
+    {
+        foreach ($rutas as $indice => $ruta) {
             ProductoImagen::create([
-                'producto_id' => $producto->id,
-                'path'        => $this->guardarFoto($archivo),
-                // Solo la primera imagen (índice 0) puede ser principal,
-                // y solo si se pidió marcarla como tal
-                'es_principal' => $marcarPrimeraComoPrincipal && $indice === 0,
+                'producto_id'  => $producto->id,
+                'path'         => $ruta,
+                'es_principal' => $indice === 0,
             ]);
+        }
+    }
+
+    /** Borra fotos recién escritas cuyo guardado no se completó. */
+    private function borrarFotos(array $rutas): void
+    {
+        if ($rutas !== []) {
+            Storage::disk('public')->delete($rutas);
         }
     }
 
@@ -254,9 +340,9 @@ class ProductoService
      * Guarda la foto convertida a WebP liviano (ver FotoProducto) en
      * storage/app/public/productos/ y retorna su ruta relativa.
      *
-     * Si no se puede convertir (un formato que GD no lee, un GD sin WebP...), se guarda el
-     * archivo original como antes y el error queda en laravel.log: la foto nunca se pierde
-     * y el producto se guarda igual.
+     * Si no se puede convertir (un formato que GD no lee, un GD sin WebP, no alcanza la
+     * memoria...), se guarda el archivo original como antes, el error queda en laravel.log
+     * y se cuenta en fotosSinOptimizar: la foto nunca se pierde y el producto se guarda igual.
      */
     private function guardarFoto(UploadedFile $archivo): string
     {
@@ -270,9 +356,10 @@ class ProductoService
             return $path;
         } catch (\Throwable $e) {
             report($e);
+            $this->fotosSinOptimizar++;
 
             // store() genera un nombre único con la extensión original; si ni así se puede
-            // escribir, la excepción revierte la transacción y el controlador avisa del error
+            // escribir, guardarFotos() borra las anteriores y el controlador avisa del error
             return $archivo->store('productos', 'public')
                 ?: throw new \RuntimeException('No se pudo guardar la foto en el servidor.');
         }
