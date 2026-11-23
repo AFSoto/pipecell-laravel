@@ -3,7 +3,8 @@
     Solo los botones: la tarjeta y la fila ponen el contenedor.
 
     $compacto = true en la fila de la lista (solo íconos); en la tarjeta, Editar lleva texto.
-    @js() escapa comillas y saltos de línea para JavaScript.
+    @js() escapa comillas y saltos de línea para JavaScript, y da null cuando no hay valor
+    (el precio de compra es opcional: con {{ }} quedaba ", ," y Editar no funcionaba).
 
     En pantallas táctiles (pointer-coarse: el iPad) los botones crecen a 44 px, lo que
     pide Apple para tocar sin errar; con mouse quedan de 32 px.
@@ -23,7 +24,7 @@
             @js($producto->codigo ?? ''),
             @js($producto->nombre),
             @js($producto->descripcion ?? ''),
-            {{ $producto->precio_compra }},
+            @js($producto->precio_compra),
             {{ $producto->precio_venta }},
             {{ $producto->stock }},
             {{ $producto->stock_minimo }},

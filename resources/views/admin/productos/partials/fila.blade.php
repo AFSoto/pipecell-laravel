@@ -34,10 +34,13 @@
         {{ $producto->categoria->nombre }}
     </td>
 
-    {{-- Precio de venta y, debajo, el de compra tachado (referencia de costo) --}}
+    {{-- Precio de venta y, debajo, el de compra tachado (referencia de costo).
+         El de compra es opcional: si el producto no tiene, no se muestra (ni "$0"). --}}
     <td class="py-2 px-4 text-right whitespace-nowrap">
         <p class="font-bold text-gray-900">${{ number_format($producto->precio_venta, 0, ',', '.') }}</p>
-        <p class="text-xs text-gray-400 line-through">${{ number_format($producto->precio_compra, 0, ',', '.') }}</p>
+        @if ($producto->precio_compra !== null)
+            <p class="text-xs text-gray-400 line-through">${{ number_format($producto->precio_compra, 0, ',', '.') }}</p>
+        @endif
     </td>
 
     {{-- Stock con semáforo de color (clickeable para ajuste rápido) --}}

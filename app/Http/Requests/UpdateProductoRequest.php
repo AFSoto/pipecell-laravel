@@ -57,7 +57,8 @@ class UpdateProductoRequest extends FormRequest
             'marco'             => ['nullable', 'boolean', $this->reglaMarco()],
             'marca'             => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('La marca es obligatoria para pantallas.')],
             'referencia'        => ['nullable', 'string', 'max:100', $this->reglaExclusivaPantalla('La referencia es obligatoria para pantallas.')],
-            'precio_compra'     => ['required', 'numeric', 'min:0'],
+            // Opcional: vacío se guarda como NULL ("sin precio de compra"), que no es lo mismo que 0
+            'precio_compra'     => ['nullable', 'numeric', 'min:0'],
             'precio_venta'      => ['required', 'numeric', 'min:0'],
             'stock'             => ['required', 'integer', 'min:0'],
             'stock_minimo'      => ['nullable', 'integer', 'min:0'],
@@ -74,7 +75,7 @@ class UpdateProductoRequest extends FormRequest
             'tipo_producto_id.exists'   => 'El tipo de producto seleccionado no existe.',
             'codigo.unique'             => 'Este código ya está en uso por otro producto.',
             'nombre.required'           => 'El nombre del producto es obligatorio.',
-            'precio_compra.required'    => 'El precio de compra es obligatorio.',
+            'precio_compra.numeric'     => 'El precio de compra debe ser un número.',
             'precio_compra.min'         => 'El precio de compra no puede ser negativo.',
             'precio_venta.required'     => 'El precio de venta es obligatorio.',
             'precio_venta.min'          => 'El precio de venta no puede ser negativo.',

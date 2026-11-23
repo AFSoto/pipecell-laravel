@@ -82,6 +82,27 @@ class ReparacionDisplayTest extends TestCase
         $this->assertStringContainsString("Reparación #{$reparacion->id}", $movimiento->nota);
     }
 
+    public function test_un_display_sin_precio_de_compra_se_usa_y_queda_sin_costo(): void
+    {
+        $usuario  = $this->crearUsuario();
+        $pantalla = $this->crearPantalla(stock: 5, precioCompra: null);
+
+        $this->actingAs($usuario)->post(route('admin.reparaciones.store'), $this->datosFormulario([
+            'usa_display' => '1',
+            'display_id'  => $pantalla->id,
+        ]))
+            ->assertRedirect(route('admin.reparaciones.index'))
+            ->assertSessionHas('success')
+            ->assertSessionMissing('error');
+
+        $this->assertSame(4, $pantalla->fresh()->stock);
+
+        // La copia del precio de compra queda vacía: no se sabe el costo (no es un costo de $0)
+        $repuesto = Reparacion::sole()->repuestos()->sole();
+        $this->assertSame($pantalla->id, $repuesto->producto_id);
+        $this->assertNull($repuesto->costo_unitario);
+    }
+
     public function test_respeta_el_costo_de_repuestos_escrito_por_el_usuario(): void
     {
         $usuario  = $this->crearUsuario();

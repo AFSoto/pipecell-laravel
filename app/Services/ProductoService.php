@@ -48,7 +48,7 @@ class ProductoService
                 'marco'            => $datos['marco'] ?? null,
                 'marca'            => $datos['marca'] ?? null,
                 'referencia'       => $datos['referencia'] ?? null,
-                'precio_compra'    => $datos['precio_compra'],
+                'precio_compra'    => $datos['precio_compra'] ?? null, // opcional: null = sin precio de compra
                 'precio_venta'     => $datos['precio_venta'],
                 'stock'            => $datos['stock'] ?? 0,
                 'stock_minimo'     => $datos['stock_minimo'] ?? 3,
@@ -88,7 +88,7 @@ class ProductoService
                 'marco'            => $datos['marco'] ?? null,
                 'marca'            => $datos['marca'] ?? null,
                 'referencia'       => $datos['referencia'] ?? null,
-                'precio_compra'    => $datos['precio_compra'],
+                'precio_compra'    => $datos['precio_compra'] ?? null, // vaciar el campo deja el producto sin precio de compra
                 'precio_venta'     => $datos['precio_venta'],
                 'stock'            => $datos['stock'],
                 'stock_minimo'     => $datos['stock_minimo'] ?? 3,

@@ -30,7 +30,8 @@ trait CreaDatosDeReparacion
         return Caja::create(['grupo' => $grupo, 'numero' => $numero, 'estado' => 'libre']);
     }
 
-    protected function crearPantalla(string $nombre = 'Pantalla Samsung A10', int $stock = 5, int $precioCompra = 40000): Producto
+    /** $precioCompra null = pantalla sin precio de compra (es opcional). */
+    protected function crearPantalla(string $nombre = 'Pantalla Samsung A10', int $stock = 5, ?int $precioCompra = 40000): Producto
     {
         $categoria = Categoria::firstOrCreate(
             ['nombre' => 'Repuestos - Pantallas'],
@@ -42,7 +43,7 @@ trait CreaDatosDeReparacion
             'nombre'        => $nombre,
             'marco'         => false,
             'precio_compra' => $precioCompra,
-            'precio_venta'  => $precioCompra * 2,
+            'precio_venta'  => ($precioCompra ?? 40000) * 2,
             'stock'         => $stock,
             'stock_minimo'  => 1,
             'estado'        => 'activo',

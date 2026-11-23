@@ -39,6 +39,7 @@ class Producto extends Model
     /**
      * Casts: los precios siempre se devuelven con exactamente 2 decimales.
      * Esto evita problemas de comparación de flotantes al calcular ganancias.
+     * precio_compra es opcional: null = sin precio de compra (no es lo mismo que 0).
      */
     protected function casts(): array
     {
@@ -99,11 +100,14 @@ class Producto extends Model
     /**
      * Ganancia unitaria: precio de venta menos precio de compra.
      * No se guarda en BD — se calcula al vuelo.
+     * Sin precio de compra no se sabe: devuelve null, no el precio de venta entero.
      * Ejemplo: $producto->ganancia_unitaria → 15000.00
      */
     protected function gananciaUnitaria(): Attribute
     {
-        return Attribute::get(fn () => $this->precio_venta - $this->precio_compra);
+        return Attribute::get(fn () => $this->precio_compra === null
+            ? null
+            : $this->precio_venta - $this->precio_compra);
     }
 
     /**

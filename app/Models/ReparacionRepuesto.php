@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Repuesto del inventario usado en una reparación (hoy: el display).
  *
  * costo_unitario guarda el precio de compra del momento, solo como historial:
- * no se suma al costo de Repuestos de la reparación.
+ * no se suma al costo de Repuestos de la reparación. Queda en null si el producto
+ * no tenía precio de compra (no se sabe el costo; no es un costo de $0).
  *
  * El stock no se toca desde aquí: lo maneja ReparacionService::sincronizarDisplay(),
  * que usa ProductoService::ajustarStock() para dejar el movimiento registrado.

@@ -48,10 +48,16 @@
             ${{ number_format($producto->precio_venta, 0, ',', '.') }}
         </p>
 
-        {{-- Precio de compra tachado (referencia de costo) --}}
-        <p class="text-xs text-gray-400 line-through">
-            ${{ number_format($producto->precio_compra, 0, ',', '.') }}
-        </p>
+        {{-- Precio de compra tachado (referencia de costo).
+             Es opcional: si el producto no tiene, no se muestra (ni "$0"), pero queda una línea
+             vacía del mismo alto para que sus botones no queden más arriba que los de al lado. --}}
+        @if ($producto->precio_compra !== null)
+            <p class="text-xs text-gray-400 line-through">
+                ${{ number_format($producto->precio_compra, 0, ',', '.') }}
+            </p>
+        @else
+            <p class="text-xs" aria-hidden="true">&nbsp;</p>
+        @endif
 
         {{-- Stock con semáforo de color (clickeable para ajuste rápido) --}}
         @include('admin.productos.partials.stock', ['producto' => $producto, 'margen' => 'mt-2'])

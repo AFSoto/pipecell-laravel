@@ -361,13 +361,14 @@
                           class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none">{{ $viejo('descripcion') }}</textarea>
             </div>
 
-            {{-- Precios --}}
+            {{-- Precios. El de compra es opcional: vacío = sin precio de compra (no es lo mismo que 0).
+                 is_numeric(): un 0 escrito vuelve como 0 (no vacío) y un valor raro no rompe la página. --}}
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="text-xs text-gray-500 mb-1 block">Precio compra *</label>
+                    <label class="text-xs text-gray-500 mb-1 block">Precio compra</label>
                     <input type="text" id="precio_compra_visual" placeholder="50.000" inputmode="numeric"
                            oninput="formatearPrecio(this, 'precio_compra')"
-                           value="{{ $viejo('precio_compra') ? number_format($viejo('precio_compra'), 0, ',', '.') : '' }}"
+                           value="{{ is_numeric($viejo('precio_compra')) ? number_format($viejo('precio_compra'), 0, ',', '.') : '' }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                     <input type="hidden" name="precio_compra" id="precio_compra" value="{{ $viejo('precio_compra') }}">
                 </div>
@@ -375,7 +376,7 @@
                     <label class="text-xs text-gray-500 mb-1 block">Precio venta *</label>
                     <input type="text" id="precio_venta_visual" placeholder="80.000" inputmode="numeric"
                            oninput="formatearPrecio(this, 'precio_venta')"
-                           value="{{ $viejo('precio_venta') ? number_format($viejo('precio_venta'), 0, ',', '.') : '' }}"
+                           value="{{ is_numeric($viejo('precio_venta')) ? number_format($viejo('precio_venta'), 0, ',', '.') : '' }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                     <input type="hidden" name="precio_venta" id="precio_venta" value="{{ $viejo('precio_venta') }}">
                 </div>
@@ -574,7 +575,7 @@
             {{-- Precios --}}
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="text-xs text-gray-500 mb-1 block">Precio compra *</label>
+                    <label class="text-xs text-gray-500 mb-1 block">Precio compra</label>
                     <input type="text" id="editar-precio_compra_visual" inputmode="numeric"
                            oninput="formatearPrecio(this, 'editar-precio_compra')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
@@ -923,7 +924,7 @@
      * @param {string} codigo       Código/SKU actual
      * @param {string} nombre       Nombre actual
      * @param {string} descripcion  Descripción actual
-     * @param {number} precioCompra Precio de compra (número puro)
+     * @param {?string} precioCompra Precio de compra ('20000.00'), o null si el producto no tiene
      * @param {number} precioVenta  Precio de venta (número puro)
      * @param {number} stock        Stock actual
      * @param {number} stockMinimo  Stock mínimo actual
