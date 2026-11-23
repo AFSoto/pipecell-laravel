@@ -112,7 +112,7 @@
                 <a href="{{ request()->fullUrlWithQuery(['vista' => $opcion, 'page' => null]) }}"
                    title="{{ $titulo }}" aria-label="{{ $titulo }}"
                    @if ($vista === $opcion) aria-current="true" @endif
-                   class="p-2 rounded-lg transition {{ $vista === $opcion ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50' }}">
+                   class="p-2 pointer-coarse:p-3 rounded-lg transition {{ $vista === $opcion ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50' }}">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ $icono }}"/>
                     </svg>
@@ -205,6 +205,12 @@
 {{-- ============================== --}}
 {{-- MODAL — Crear producto          --}}
 {{-- ============================== --}}
+@php
+    // Lo que se había escrito en "Nuevo producto", solo si el que falló fue este
+    // formulario (errores en la bolsa por defecto). Si falló editar, old() trae los
+    // datos de la edición y no deben aparecer aquí (ver UpdateProductoRequest::$errorBag).
+    $viejo = fn (string $campo, $defecto = null) => $errors->any() ? old($campo, $defecto) : $defecto;
+@endphp
 <div id="modal-producto" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/50"
          onclick="document.getElementById('modal-producto').classList.add('hidden')"></div>
@@ -241,6 +247,7 @@
                                     <li>{{ $error }}</li>
                                 @endforeach
                             </ul>
+                            <p class="text-xs text-red-500 mt-2">Si habías elegido fotos, vuelve a elegirlas: el navegador no las conserva.</p>
                         </div>
                         <button type="button" onclick="ocultarErroresCrear()"
                                 class="flex-shrink-0 p-1 rounded-lg hover:bg-red-100 transition text-red-400 hover:text-red-600">
@@ -261,7 +268,7 @@
                             class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                         <option value="">Selecciona...</option>
                         @foreach ($categorias as $cat)
-                            <option value="{{ $cat->id }}" {{ old('categoria_id') == $cat->id ? 'selected' : '' }}>
+                            <option value="{{ $cat->id }}" {{ $viejo('categoria_id') == $cat->id ? 'selected' : '' }}>
                                 {{ $cat->nombre }}
                             </option>
                         @endforeach
@@ -273,7 +280,7 @@
                             class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                         <option value="">Sin tipo</option>
                         @foreach ($tiposProducto as $tipo)
-                            <option value="{{ $tipo->id }}" {{ old('tipo_producto_id') == $tipo->id ? 'selected' : '' }}>
+                            <option value="{{ $tipo->id }}" {{ $viejo('tipo_producto_id') == $tipo->id ? 'selected' : '' }}>
                                 {{ $tipo->nombre }}
                             </option>
                         @endforeach
@@ -287,14 +294,14 @@
                 <div class="flex items-center gap-6">
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="marco" id="crear-marco-si" value="1"
-                               {{ old('marco') === '1' ? 'checked' : '' }}
+                               {{ $viejo('marco') === '1' ? 'checked' : '' }}
                                onchange="generarNombrePantalla('crear')"
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">Sí, viene con marco</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="marco" id="crear-marco-no" value="0"
-                               {{ old('marco') === '0' ? 'checked' : '' }}
+                               {{ $viejo('marco') === '0' ? 'checked' : '' }}
                                onchange="generarNombrePantalla('crear')"
                                class="w-4 h-4 text-blue-600 accent-blue-600">
                         <span class="text-sm text-gray-700">No, sin marco</span>
@@ -308,7 +315,7 @@
                     <label class="text-xs text-gray-500 mb-1 block">Marca *</label>
                     <input type="text" name="marca" id="crear-marca" maxlength="100"
                            placeholder="Ej: Xiaomi, Motorola"
-                           value="{{ old('marca') }}"
+                           value="{{ $viejo('marca') }}"
                            oninput="generarNombrePantalla('crear')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
@@ -316,7 +323,7 @@
                     <label class="text-xs text-gray-500 mb-1 block">Referencia *</label>
                     <input type="text" name="referencia" id="crear-referencia" maxlength="100"
                            placeholder="Ej: G20, 15C"
-                           value="{{ old('referencia') }}"
+                           value="{{ $viejo('referencia') }}"
                            oninput="generarNombrePantalla('crear')"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
@@ -334,14 +341,14 @@
                     <label class="text-xs text-gray-500 mb-1 block">Código / SKU</label>
                     <input type="text" name="codigo" maxlength="50"
                            placeholder="Ej: SAM-S24-LCD"
-                           value="{{ old('codigo') }}"
+                           value="{{ $viejo('codigo') }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
                 <div id="crear-wrapper-nombre">
                     <label class="text-xs text-gray-500 mb-1 block">Nombre *</label>
                     <input type="text" name="nombre" id="crear-nombre" required maxlength="150"
                            placeholder="Ej: Pantalla Samsung Galaxy S24"
-                           value="{{ old('nombre') }}"
+                           value="{{ $viejo('nombre') }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
             </div>
@@ -351,7 +358,7 @@
                 <label class="text-xs text-gray-500 mb-1 block">Descripción</label>
                 <textarea name="descripcion" rows="2"
                           placeholder="Especificaciones, compatibilidad, notas..."
-                          class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none">{{ old('descripcion') }}</textarea>
+                          class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none">{{ $viejo('descripcion') }}</textarea>
             </div>
 
             {{-- Precios --}}
@@ -360,17 +367,17 @@
                     <label class="text-xs text-gray-500 mb-1 block">Precio compra *</label>
                     <input type="text" id="precio_compra_visual" placeholder="50.000" inputmode="numeric"
                            oninput="formatearPrecio(this, 'precio_compra')"
-                           value="{{ old('precio_compra') ? number_format(old('precio_compra'), 0, ',', '.') : '' }}"
+                           value="{{ $viejo('precio_compra') ? number_format($viejo('precio_compra'), 0, ',', '.') : '' }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                    <input type="hidden" name="precio_compra" id="precio_compra" value="{{ old('precio_compra') }}">
+                    <input type="hidden" name="precio_compra" id="precio_compra" value="{{ $viejo('precio_compra') }}">
                 </div>
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Precio venta *</label>
                     <input type="text" id="precio_venta_visual" placeholder="80.000" inputmode="numeric"
                            oninput="formatearPrecio(this, 'precio_venta')"
-                           value="{{ old('precio_venta') ? number_format(old('precio_venta'), 0, ',', '.') : '' }}"
+                           value="{{ $viejo('precio_venta') ? number_format($viejo('precio_venta'), 0, ',', '.') : '' }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                    <input type="hidden" name="precio_venta" id="precio_venta" value="{{ old('precio_venta') }}">
+                    <input type="hidden" name="precio_venta" id="precio_venta" value="{{ $viejo('precio_venta') }}">
                 </div>
             </div>
 
@@ -379,7 +386,7 @@
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Stock actual *</label>
                     <input type="number" name="stock" min="0" required
-                           value="{{ old('stock', 0) }}"
+                           value="{{ $viejo('stock', 0) }}"
                            onfocus="if(this.value==='0') this.value=''"
                            onblur="if(this.value==='') this.value='0'"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
@@ -387,7 +394,7 @@
                 <div>
                     <label class="text-xs text-gray-500 mb-1 block">Stock mínimo</label>
                     <input type="number" name="stock_minimo" min="0"
-                           value="{{ old('stock_minimo', 3) }}"
+                           value="{{ $viejo('stock_minimo', 3) }}"
                            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                 </div>
             </div>
@@ -449,6 +456,32 @@
               class="p-6 space-y-5">
             @csrf
             @method('PATCH')
+            {{-- La query de esta página: al guardar se vuelve a la misma lista --}}
+            <input type="hidden" name="volver" value="{{ request()->getQueryString() }}">
+
+            {{-- Errores de validación de editar (bolsa propia: ver UpdateProductoRequest) --}}
+            @if ($errors->editarProducto->any())
+                <div id="editar-errores" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <p class="text-sm font-semibold text-red-700 mb-1">Corrige los siguientes errores:</p>
+                            <ul class="list-disc list-inside space-y-0.5 text-sm text-red-600">
+                                @foreach ($errors->editarProducto->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                            <p class="text-xs text-red-500 mt-2">Si habías elegido fotos nuevas, vuelve a elegirlas: el navegador no las conserva.</p>
+                        </div>
+                        <button type="button" onclick="document.getElementById('editar-errores').remove()"
+                                aria-label="Cerrar errores"
+                                class="flex-shrink-0 p-1 rounded-lg hover:bg-red-100 transition text-red-400 hover:text-red-600">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            @endif
 
             {{-- Categoría y Tipo --}}
             <div class="grid grid-cols-2 gap-4">
@@ -895,16 +928,23 @@
      * @param {number} stock        Stock actual
      * @param {number} stockMinimo  Stock mínimo actual
      * @param {Array}  imagenes     Array de objetos {id, path, es_principal}
+     * @param {boolean} conErrores  true solo al reabrir después de un error de validación:
+     *                              deja visible el bloque de errores. Al abrir otro producto
+     *                              se borra, para no mostrar errores que no son suyos.
      */
     function abrirEditarProducto(id, categoriaId, tipoProductoId, codigo, nombre, descripcion,
-                                  precioCompra, precioVenta, stock, stockMinimo, marco, marca, referencia, imagenes) {
+                                  precioCompra, precioVenta, stock, stockMinimo, marco, marca, referencia, imagenes,
+                                  conErrores = false) {
         const baseUrl = '{{ url("admin/productos") }}';
         document.getElementById('form-editar-producto').action = `${baseUrl}/${id}`;
+
+        if (!conErrores) {
+            document.getElementById('editar-errores')?.remove();
+        }
 
         document.getElementById('editar-producto-subtitulo').textContent = nombre;
 
         document.getElementById('editar-codigo').value       = codigo;
-        document.getElementById('editar-nombre').value       = nombre;
         document.getElementById('editar-descripcion').value  = descripcion;
         document.getElementById('editar-stock').value        = stock;
         document.getElementById('editar-stock_minimo').value = stockMinimo;
@@ -920,14 +960,24 @@
         }
         document.getElementById('editar-marca').value      = marca ?? '';
         document.getElementById('editar-referencia').value = referencia ?? '';
-        // Regenerar nombre con los valores ya cargados (marca y referencia)
-        generarNombrePantalla('editar');
 
-        // Campos de precio: el visual muestra con puntos, el hidden guarda número puro
-        document.getElementById('editar-precio_compra').value        = precioCompra;
-        document.getElementById('editar-precio_compra_visual').value = parseInt(precioCompra).toLocaleString('es-CO');
-        document.getElementById('editar-precio_venta').value         = precioVenta;
-        document.getElementById('editar-precio_venta_visual').value  = parseInt(precioVenta).toLocaleString('es-CO');
+        // Nombre: va después de toggleMarco, que lo borra si la categoría no es de pantallas
+        // (para cuando se cambia de categoría en el formulario). Las pantallas lo arman con
+        // marca y referencia; el resto conserva el suyo. Antes se regeneraba siempre, y un
+        // accesorio abría con el nombre "Pantalla": al guardar quedaba renombrado.
+        if (categoriasConMarco.includes(parseInt(categoriaId))) {
+            generarNombrePantalla('editar');
+        } else {
+            document.getElementById('editar-nombre').value = nombre;
+        }
+
+        // Campos de precio: el visual muestra con puntos, el hidden guarda número puro.
+        // Al volver con errores un precio puede venir vacío: el campo queda vacío, no "NaN".
+        const conPuntos = valor => Number.isFinite(parseInt(valor)) ? parseInt(valor).toLocaleString('es-CO') : '';
+        document.getElementById('editar-precio_compra').value        = precioCompra ?? '';
+        document.getElementById('editar-precio_compra_visual').value = conPuntos(precioCompra);
+        document.getElementById('editar-precio_venta').value         = precioVenta ?? '';
+        document.getElementById('editar-precio_venta_visual').value  = conPuntos(precioVenta);
 
         // Limpiar previews de imágenes nuevas de una edición anterior
         document.getElementById('preview-imagenes-editar').innerHTML = '';
@@ -1297,6 +1347,33 @@
             const modal = document.getElementById('modal-producto');
             modal.classList.remove('hidden');
             const contenedor = modal.querySelector('.overflow-y-auto');
+            if (contenedor) contenedor.scrollTop = 0;
+        });
+    @endif
+
+    // Editar volvió con errores: se reabre el modal de editar de ese producto con lo que
+    // se había escrito (old) y con las fotos que ya tiene. Nunca el de crear: ahí, al
+    // "corregir y guardar", se crearía otro producto en vez de actualizar este.
+    @if ($productoConErrores)
+        document.addEventListener('DOMContentLoaded', () => {
+            abrirEditarProducto(
+                {{ $productoConErrores->id }},
+                @js(old('categoria_id')),
+                @js(old('tipo_producto_id')),
+                @js(old('codigo', '')),
+                @js(old('nombre', '')),
+                @js(old('descripcion', '')),
+                @js(old('precio_compra')),
+                @js(old('precio_venta')),
+                @js(old('stock')),
+                @js(old('stock_minimo')),
+                @js(old('marco')),
+                @js(old('marca', '')),
+                @js(old('referencia', '')),
+                @js($productoConErrores->imagenes->map(fn ($i) => ['id' => $i->id, 'path' => $i->path, 'es_principal' => $i->es_principal])),
+                true
+            );
+            const contenedor = document.querySelector('#modal-editar-producto .overflow-y-auto');
             if (contenedor) contenedor.scrollTop = 0;
         });
     @endif

@@ -1,5 +1,8 @@
-{{-- Tarjeta de un producto (vista de tarjetas): imagen grande, datos, precio, stock y acciones --}}
-<div class="bg-white rounded-2xl border border-gray-100 hover:shadow-lg transition overflow-hidden group">
+{{-- Tarjeta de un producto (vista de tarjetas): imagen grande, datos, precio, stock y acciones.
+     id: al volver de editar, la página baja hasta aquí (#producto-{id}) y la tarjeta se
+     resalta con un anillo (target:); scroll-mt-24 evita que la tape el encabezado fijo. --}}
+<div id="producto-{{ $producto->id }}"
+     class="scroll-mt-24 bg-white rounded-2xl border border-gray-100 hover:shadow-lg target:ring-2 target:ring-blue-400 transition overflow-hidden group">
 
     {{-- Imagen del producto (carga cuando aparece en pantalla) --}}
     <div class="relative aspect-square bg-gray-50">

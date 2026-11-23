@@ -148,4 +148,33 @@ class ProductosVistaTest extends TestCase
 
         return count(DB::getQueryLog());
     }
+
+    public function test_los_enlaces_de_pagina_llevan_la_vista_aunque_venga_de_la_cookie(): void
+    {
+        $this->crearProductos(101);
+
+        // Sin ?vista: la lista sale de la cookie, pero "página 2" tiene que decir lista igual,
+        // por si otra pestaña cambia la cookie entre tanto
+        $html = $this->withCookie(self::COOKIE, 'lista')->get(route('admin.productos.index'))->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('#href="[^"]*\?(?=[^"]*vista=lista)(?=[^"]*page=2)[^"]*"#', $html);
+    }
+
+    public function test_una_pagina_que_ya_no_existe_lleva_a_la_ultima_con_los_filtros(): void
+    {
+        $this->crearProductos(13); // tarjetas de a 12: 2 páginas
+
+        $this->get(route('admin.productos.index', ['buscar' => 'Producto', 'page' => 5, 'vista' => 'tarjetas']))
+            ->assertRedirect(route('admin.productos.index', ['buscar' => 'Producto', 'vista' => 'tarjetas', 'page' => 2]));
+    }
+
+    public function test_sin_resultados_una_pagina_alta_lleva_a_la_1_con_el_aviso_de_filtros(): void
+    {
+        $this->crearProductos(3);
+
+        $this->followingRedirects()
+            ->get(route('admin.productos.index', ['buscar' => 'zzz', 'page' => 3]))
+            ->assertOk()
+            ->assertSee('No se encontraron productos con esos filtros');
+    }
 }

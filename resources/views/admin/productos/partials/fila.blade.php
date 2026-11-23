@@ -1,5 +1,7 @@
-{{-- Fila de un producto (vista de lista): miniatura, datos, precio, stock y acciones --}}
-<tr class="hover:bg-gray-50/70 transition">
+{{-- Fila de un producto (vista de lista): miniatura, datos, precio, stock y acciones.
+     id: al volver de editar, la página baja hasta aquí (#producto-{id}) y la fila se
+     resalta (target:); scroll-mt-24 evita que la tape el encabezado fijo. --}}
+<tr id="producto-{{ $producto->id }}" class="scroll-mt-24 hover:bg-gray-50/70 target:bg-blue-50 transition">
 
     {{-- Miniatura: tamaño fijo para que la fila no salte; carga cuando aparece en pantalla --}}
     <td class="py-2 pl-4 pr-2 w-16">
@@ -44,7 +46,7 @@
     </td>
 
     <td class="py-2 pl-4 pr-3">
-        <div class="flex items-center justify-end gap-1">
+        <div class="flex items-center justify-end gap-1 pointer-coarse:gap-2">
             @include('admin.productos.partials.acciones', ['producto' => $producto, 'compacto' => true])
         </div>
     </td>

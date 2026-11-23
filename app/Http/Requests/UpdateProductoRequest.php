@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Categoria;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -14,9 +15,31 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class UpdateProductoRequest extends FormRequest
 {
+    /**
+     * Los errores de editar van en su propia bolsa: la página de productos reabre el
+     * modal de editar con ellos. En la bolsa por defecto los tomaría el modal de crear,
+     * y al "corregir y guardar" se crearía un producto nuevo en vez de actualizar.
+     */
+    protected $errorBag = 'editarProducto';
+
+    /** Sesión: qué producto se estaba editando cuando falló (la página reabre su modal). */
+    public const PRODUCTO_CON_ERRORES = 'producto_con_errores';
+
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Además de volver con los errores, deja en la sesión el producto de la ruta
+     * (/productos/{producto}): así la página sabe cuál reabrir sin depender de un campo
+     * del formulario, que podría faltar o venir cambiado.
+     */
+    protected function failedValidation(Validator $validator): void
+    {
+        $this->session()->flash(self::PRODUCTO_CON_ERRORES, $this->route('producto')->id);
+
+        parent::failedValidation($validator);
     }
 
     public function rules(): array

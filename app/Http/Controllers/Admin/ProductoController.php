@@ -11,7 +11,9 @@ use App\Models\ProductoImagen;
 use App\Models\TipoMovimientoStock;
 use App\Models\TipoProducto;
 use App\Services\ProductoService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cookie;
 
 /**
@@ -30,6 +32,9 @@ class ProductoController extends Controller
 
     /** Cookie con la vista elegida en este equipo (PC, iPad...). */
     private const COOKIE_VISTA = 'productos_vista';
+
+    /** Lo que se conserva de la lista al volver después de editar o desactivar. */
+    private const FILTROS_LISTA = ['categoria', 'buscar', 'stock_bajo', 'vista', 'page'];
 
     public function __construct(
         private ProductoService $productoService
@@ -62,13 +67,30 @@ class ProductoController extends Controller
             ->when($stockBajo, fn ($q) => $q->stockBajo())
             ->orderBy('nombre');
 
-        $productos = $query->paginate(self::POR_PAGINA[$vista])->withQueryString();
+        // Los enlaces de página llevan la vista: si otra pestaña cambia la cookie,
+        // "siguiente" sigue en esta vista y con su cantidad por página
+        $productos = $query->paginate(self::POR_PAGINA[$vista])->withQueryString()->appends('vista', $vista);
+
+        // Página que ya no existe (se desactivó lo que había, o un enlace viejo): a la
+        // última que sí. Sin resultados, lastPage() es 1 y ahí se muestra el aviso vacío.
+        if ($productos->isEmpty() && $productos->currentPage() > 1) {
+            return redirect()->to($productos->url($productos->lastPage()));
+        }
 
         $categorias         = Categoria::activas()->orderBy('nombre')->get();
         $tiposProducto      = TipoProducto::orderBy('nombre')->get();
         $tiposMovimiento    = TipoMovimientoStock::orderBy('nombre')->get();
 
-        return view('admin.productos.index', compact('productos', 'categorias', 'tiposProducto', 'tiposMovimiento', 'vista'));
+        // Editar volvió con errores: se reabre el modal de ese producto con lo que se
+        // había escrito y con sus fotos (ver UpdateProductoRequest)
+        $idConErrores       = $request->session()->get(UpdateProductoRequest::PRODUCTO_CON_ERRORES);
+        $productoConErrores = $idConErrores && $request->session()->get('errors')?->hasBag('editarProducto')
+            ? Producto::with('imagenes')->find($idConErrores)
+            : null;
+
+        return view('admin.productos.index', compact(
+            'productos', 'categorias', 'tiposProducto', 'tiposMovimiento', 'vista', 'productoConErrores'
+        ));
     }
 
     /**
@@ -131,12 +153,10 @@ class ProductoController extends Controller
                 $request->file('imagenes')
             );
 
-            return redirect()
-                ->route('admin.productos.index')
+            return $this->volverALaLista($request, $producto->id)
                 ->with('success', "Producto \"{$producto->nombre}\" actualizado con éxito.");
         } catch (\Exception $e) {
-            return redirect()
-                ->route('admin.productos.index')
+            return $this->volverALaLista($request, $producto->id)
                 ->with('error', 'Error al actualizar: ' . $e->getMessage());
         }
     }
@@ -181,20 +201,37 @@ class ProductoController extends Controller
     /**
      * Desactiva un producto (soft delete por estado).
      */
-    public function destroy(Producto $producto)
+    public function destroy(Request $request, Producto $producto)
     {
         try {
             $nombre = $producto->nombre;
             $this->productoService->eliminar($producto);
 
-            return redirect()
-                ->route('admin.productos.index')
+            // Sin ancla: el producto ya no está en la lista
+            return $this->volverALaLista($request)
                 ->with('success', "Producto \"{$nombre}\" desactivado.");
         } catch (\Exception $e) {
-            return redirect()
-                ->route('admin.productos.index')
+            return $this->volverALaLista($request, $producto->id)
                 ->with('error', 'Error al desactivar: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Vuelve a la lista como estaba: filtros, vista y página (el campo oculto "volver"
+     * trae la query de la página donde se editó o desactivó). Con $productoId baja
+     * hasta ese producto, que la lista resalta.
+     *
+     * Solo se toma la query, y solo los filtros conocidos con valores simples: la URL
+     * base es siempre la de la lista, así que no se puede redirigir a otro sitio.
+     */
+    private function volverALaLista(Request $request, ?int $productoId = null): RedirectResponse
+    {
+        parse_str((string) $request->input('volver', ''), $query);
+
+        $filtros = array_filter(Arr::only($query, self::FILTROS_LISTA), 'is_scalar');
+        $url     = route('admin.productos.index', $filtros);
+
+        return redirect()->to($productoId ? "{$url}#producto-{$productoId}" : $url);
     }
 
     /**

@@ -23,3 +23,14 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Comprimir lo que se descarga: la lista de 100 productos pasa de ~500 KB a ~30 KB.
+# Los dos IfModule son necesarios: sin mod_filter, AddOutputFilterByType da error 500
+# en todo el sitio; así, un servidor sin estos módulos simplemente lo ignora.
+# En el servidor este bloque se agrega a mano al .htaccess que ya hay (cPanel escribe
+# ahí sus propias líneas, como la versión de PHP): no reemplazar el archivo.
+<IfModule mod_deflate.c>
+    <IfModule mod_filter.c>
+        AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript text/javascript application/json image/svg+xml
+    </IfModule>
+</IfModule>
