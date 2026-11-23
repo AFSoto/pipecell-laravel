@@ -6,9 +6,11 @@ use App\Models\MovimientoStock;
 use App\Models\Producto;
 use App\Models\ProductoImagen;
 use App\Models\TipoMovimientoStock;
+use App\Support\FotoProducto;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * Service para la lógica de negocio de productos.
@@ -238,17 +240,41 @@ class ProductoService
         bool $marcarPrimeraComoPrincipal = false
     ): void {
         foreach ($imagenes as $indice => $archivo) {
-            // store() genera un nombre único automáticamente y retorna la ruta relativa.
-            // El disco 'public' guarda en storage/app/public/productos/
-            $path = $archivo->store('productos', 'public');
-
             ProductoImagen::create([
                 'producto_id' => $producto->id,
-                'path'        => $path,
+                'path'        => $this->guardarFoto($archivo),
                 // Solo la primera imagen (índice 0) puede ser principal,
                 // y solo si se pidió marcarla como tal
                 'es_principal' => $marcarPrimeraComoPrincipal && $indice === 0,
             ]);
+        }
+    }
+
+    /**
+     * Guarda la foto convertida a WebP liviano (ver FotoProducto) en
+     * storage/app/public/productos/ y retorna su ruta relativa.
+     *
+     * Si no se puede convertir (un formato que GD no lee, un GD sin WebP...), se guarda el
+     * archivo original como antes y el error queda en laravel.log: la foto nunca se pierde
+     * y el producto se guarda igual.
+     */
+    private function guardarFoto(UploadedFile $archivo): string
+    {
+        try {
+            $path = 'productos/' . Str::random(40) . '.webp';
+
+            if (! Storage::disk('public')->put($path, FotoProducto::aWebp($archivo->getRealPath()))) {
+                throw new \RuntimeException("No se pudo escribir {$path}.");
+            }
+
+            return $path;
+        } catch (\Throwable $e) {
+            report($e);
+
+            // store() genera un nombre único con la extensión original; si ni así se puede
+            // escribir, la excepción revierte la transacción y el controlador avisa del error
+            return $archivo->store('productos', 'public')
+                ?: throw new \RuntimeException('No se pudo guardar la foto en el servidor.');
         }
     }
 }

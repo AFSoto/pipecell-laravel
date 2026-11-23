@@ -404,9 +404,9 @@
                 </div>
             </div>
 
-            {{-- Imágenes --}}
+            {{-- Imágenes: hasta 20 MB cada una; se guardan en WebP liviano (FotoProducto) --}}
             <div>
-                <label class="text-xs text-gray-500 mb-1 block">Imágenes (máx. 2 MB c/u)</label>
+                <label class="text-xs text-gray-500 mb-1 block">Imágenes (máx. 20 MB c/u)</label>
                 <input type="file" name="imagenes[]" id="input-imagenes-crear"
                        multiple accept="image/*"
                        onchange="mostrarPreviewImagenes(this, 'preview-imagenes-crear')"
@@ -616,7 +616,7 @@
 
             {{-- Agregar imágenes nuevas --}}
             <div>
-                <label class="text-xs text-gray-500 mb-1 block">Agregar imágenes nuevas</label>
+                <label class="text-xs text-gray-500 mb-1 block">Agregar imágenes nuevas (máx. 20 MB c/u)</label>
                 <input type="file" name="imagenes[]" id="input-imagenes-editar"
                        multiple accept="image/*"
                        onchange="mostrarPreviewImagenes(this, 'preview-imagenes-editar')"
