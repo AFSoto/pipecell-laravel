@@ -220,22 +220,6 @@ class PeriodoReparacionesTest extends TestCase
         $this->assertSame([$dentro->id], $this->idsEnLaLista($html));
     }
 
-    /** «Limpiar filtros» no sale solo por estar en el periodo predefinido; con otro periodo, sí. */
-    public function test_limpiar_filtros_no_sale_por_el_periodo_predefinido(): void
-    {
-        $this->get(route('admin.reparaciones.index', ['estado' => 'todos']))
-            ->assertOk()
-            ->assertDontSee('Limpiar filtros');
-
-        $this->get(route('admin.reparaciones.index', ['estado' => 'todos', 'periodo' => 'semestre']))
-            ->assertOk()
-            ->assertDontSee('Limpiar filtros');
-
-        $this->get(route('admin.reparaciones.index', ['estado' => 'todos', 'periodo' => 'mes']))
-            ->assertOk()
-            ->assertSee('Limpiar filtros');
-    }
-
     /**
      * [query string, estado marcado, periodo marcado, indicador], con hoy = 25 nov 2026. Ninguna
      * da error, y el select marca lo que de verdad se filtró (antes, sin nada marcado, se veía

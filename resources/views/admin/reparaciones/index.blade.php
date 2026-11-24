@@ -93,12 +93,13 @@
     // Solo en_proceso no necesita filtro de fechas
     $sinFiltroFecha  = $fEstado === 'en_proceso';
 
-    // Verifica si existen filtros adicionales activos. El periodo predefinido (Últimos 6 meses,
-    // ReparacionController::PERIODO_POR_DEFECTO) no cuenta como filtro: no muestra «Limpiar filtros»
-    $hayFiltrosExtra = $fBuscar
-        || ($fEstado && $fEstado !== 'todos')
-        || (!$sinFiltroFecha && $fPeriodo !== $filtros['periodoPorDefecto'])
-        || $fDesde || $fHasta;
+    // «Limpiar filtros» vuelve a la página de inicio: «En proceso», sin búsqueda. Sale solo
+    // cuando lo que se ve es otra cosa: otro estado (con cualquier periodo) o algo escrito en el
+    // buscador, aunque sea una letra (el campo y la × la muestran). En «En proceso» el periodo y
+    // las fechas no cuentan: ahí no se filtra por fecha, y al volver de «Personalizado» las
+    // fechas siguen en la URL (los campos ocultos se envían igual). Si saliera en el inicio,
+    // llevaría a la misma página
+    $hayFiltrosExtra = $fBuscar || $fEstado !== 'en_proceso';
 @endphp
 
 {{-- El buscador actualiza la lista mientras se escribe, desde 3 letras

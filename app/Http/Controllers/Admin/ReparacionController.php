@@ -127,10 +127,8 @@ class ReparacionController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre', 'stock']);
 
-        // Los filtros ya revisados: la vista los muestra tal cual (no lee request()). Con el
-        // predefinido sabe si el periodo cuenta como filtro extra («Limpiar filtros»)
-        $filtros = compact('estado', 'periodo', 'desde', 'hasta', 'buscar', 'buscando')
-            + ['periodoPorDefecto' => self::PERIODO_POR_DEFECTO];
+        // Los filtros ya revisados: la vista los muestra tal cual (no lee request())
+        $filtros = compact('estado', 'periodo', 'desde', 'hasta', 'buscar', 'buscando');
 
         // Retorna la vista principal
         // junto con toda la información necesaria
