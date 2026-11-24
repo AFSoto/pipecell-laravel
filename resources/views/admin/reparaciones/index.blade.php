@@ -80,22 +80,15 @@
 {{-- FILTROS — form GET unificado   --}}
 {{-- ============================== --}}
 @php
-    // Obtiene el filtro de estado desde la URL.
-    // Si no existe, usa "en_proceso" por defecto.
-    $fEstado  = request('estado', 'en_proceso');
-
-    // Obtiene el filtro de periodo.
-    // Por defecto será "mes".
-    $fPeriodo = request('periodo', 'mes');
-
-    // Obtiene el texto de búsqueda
-    $fBuscar  = request('buscar');
-
-    // Obtiene la fecha inicial personalizada
-    $fDesde   = request('desde');
-
-    // Obtiene la fecha final personalizada
-    $fHasta   = request('hasta');
+    // Los filtros vienen revisados del controlador (no de request()): el select, las fechas y
+    // el texto de la lista muestran exactamente lo que se filtró. Ver ReparacionController::index
+    // y App\Support\FiltroPeriodo::delPedido.
+    $fEstado   = $filtros['estado'];     // todos, en_proceso, arreglado o entregado
+    $fPeriodo  = $filtros['periodo'];    // uno de FiltroPeriodo::PERIODOS
+    $fDesde    = $filtros['desde'];      // YYYY-MM-DD o null (ya en orden)
+    $fHasta    = $filtros['hasta'];
+    $fBuscar   = $filtros['buscar'];     // lo escrito, aunque sea una letra (el campo y la × lo muestran)
+    $fBuscando = $filtros['buscando'];   // si de verdad se buscó: desde 2 letras
 
     // Solo en_proceso no necesita filtro de fechas
     $sinFiltroFecha  = $fEstado === 'en_proceso';
@@ -253,37 +246,23 @@
                 default      => null,
             };
 
-            // Los últimos 3 y 6 meses dicen desde qué día cuentan: la misma fecha con la que
-            // filtra el controlador, y así se ve que hoy entra
-            $desdeHaceMeses = fn (int $meses) => 'del ' . \App\Support\FiltroPeriodo::inicioUltimosMeses($meses)->format('d/m/Y') . ' a hoy';
+            // El periodo como lo dice la lista: «de este mes», «de los últimos 6 meses (del
+            // 23/05/2026 a hoy)», «del 10/03/2026 al 12/03/2026»... (FiltroPeriodo::descripcion,
+            // con las mismas fechas que filtró el controlador). En proceso no filtra por fecha
+            $periodoLabel = $sinFiltroFecha ? '' : \App\Support\FiltroPeriodo::descripcion($fPeriodo, $fDesde, $fHasta);
 
-            $periodoLabel = match($fPeriodo) {
-                'hoy'          => 'de hoy',
-                'semana'       => 'de esta semana',
-                'mes_pasado'   => 'del mes pasado',
-                'trimestre'    => 'de los últimos 3 meses (' . $desdeHaceMeses(3) . ')',
-                'semestre'     => 'de los últimos 6 meses (' . $desdeHaceMeses(6) . ')',
-                'anio'         => 'de este año',
-                'personalizado'=> ($fDesde && $fHasta)
-                    ? 'del ' . \Carbon\Carbon::parse($fDesde)->format('d/m/Y') . ' al ' . \Carbon\Carbon::parse($fHasta)->format('d/m/Y')
-                    : 'de este mes',
-                default        => 'de este mes',
-            };
+            // Cuáles se ven: «todas las reparaciones de este mes», «reparaciones entregadas de…»
+            $cuales = trim(($estadoLabel ? "reparaciones {$estadoLabel}" : 'todas las reparaciones') . ' ' . $periodoLabel);
         @endphp
 
-        {{-- total(): todas las que encontró, aunque la página muestre 25 --}}
-        @if($fBuscar && $estadoLabel)
+        {{-- Con búsqueda (desde 2 letras, como el servidor) dice entre cuáles buscó: la búsqueda
+             respeta el estado y el periodo, y sin decirlo parecía que no existía.
+             total(): todas las que encontró, aunque la página muestre 25 --}}
+        @if($fBuscando)
             <strong>{{ $reparaciones->total() }}</strong> resultado{{ $reparaciones->total() !== 1 ? 's' : '' }}
-            para "<strong>{{ $fBuscar }}</strong>" en {{ $estadoLabel }}
-        @elseif($fBuscar)
-            <strong>{{ $reparaciones->total() }}</strong> resultado{{ $reparaciones->total() !== 1 ? 's' : '' }}
-            para "<strong>{{ $fBuscar }}</strong>"
-        @elseif($estadoLabel && $sinFiltroFecha)
-            Mostrando reparaciones {{ $estadoLabel }}
-        @elseif($estadoLabel)
-            Mostrando reparaciones {{ $estadoLabel }} {{ $periodoLabel }}
+            para "<strong>{{ $fBuscar }}</strong>" entre {{ $estadoLabel ? 'las ' : '' }}{{ $cuales }}
         @else
-            Mostrando todas las reparaciones {{ $periodoLabel }}
+            Mostrando {{ $cuales }}
         @endif
     </p>
 </div>
@@ -323,10 +302,11 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.42 15.17l-5.1-5.1a2.5 2.5 0 010-3.54l.71-.7a2.5 2.5 0 013.54 0l5.1 5.1m-4.25 4.24l4.24-4.24m0 0l5.1 5.1a2.5 2.5 0 010 3.54l-.7.7a2.5 2.5 0 01-3.55 0l-5.1-5.1"/>
             </svg>
         </div>
-        {{-- Con búsqueda (la en vivo sale a cada rato) no es que no haya reparaciones --}}
-        @if($fBuscar)
+        {{-- Con búsqueda (la en vivo sale a cada rato) no es que no haya reparaciones. La
+             búsqueda respeta el periodo: si el periodo filtra, puede estar en otro --}}
+        @if($fBuscando)
             <p class="text-gray-400 text-sm">No se encontraron reparaciones con esa búsqueda</p>
-            <p class="text-gray-300 text-xs mt-1">Prueba con el nombre, el teléfono, la marca o el modelo</p>
+            <p class="text-gray-300 text-xs mt-1">Prueba con el nombre, el teléfono, la marca o el modelo{{ $sinFiltroFecha ? '' : ', o con otro periodo' }}</p>
         @else
             <p class="text-gray-400 text-sm">No hay reparaciones registradas</p>
             <p class="text-gray-300 text-xs mt-1">Crea la primera con el botón de arriba</p>

@@ -50,23 +50,22 @@ class ReparacionController extends Controller
      */
     public function index(Request $request)
     {
-        // Obtiene el estado desde la URL.
-        // Por defecto se usa "en_proceso".
-        $estado  = $request->input('estado', 'en_proceso');
+        // Lo que llega en la URL se revisa aquí una sola vez: la consulta y la vista (select,
+        // fechas, texto de la lista) usan estos mismos valores y nunca dicen cosas distintas.
 
-        // Obtiene el periodo de tiempo seleccionado.
-        // Por defecto se usa "mes".
-        $periodo = $request->input('periodo', 'mes');
+        // Estado: «todos» o uno de EstadoReparacion. Cualquier otra cosa: «en_proceso»
+        $estado = $request->input('estado');
+        $estado = in_array($estado, ['todos', ...array_column(EstadoReparacion::cases(), 'value')], true)
+            ? $estado
+            : 'en_proceso';
 
-        // Texto ingresado en el buscador (se busca desde 2 caracteres)
-        $buscar   = $request->input('buscar');
-        $buscando = strlen($buscar ?? '') >= 2;
+        // Periodo y fechas, revisados (desconocido → «mes», fechas al revés → invertidas...)
+        ['periodo' => $periodo, 'desde' => $desde, 'hasta' => $hasta] = FiltroPeriodo::delPedido($request);
 
-        // Fecha inicial personalizada
-        $desde   = $request->input('desde');
-
-        // Fecha final personalizada
-        $hasta   = $request->input('hasta');
+        // Lo escrito en el buscador. Se busca desde 2 letras, contadas como en el JS (una «ñ»
+        // es una letra): con una sola, que llega al cambiar un select, no hay búsqueda
+        $buscar   = is_string($request->input('buscar')) ? $request->input('buscar') : null;
+        $buscando = mb_strlen($buscar ?? '') >= 2;
 
         // Solo en_proceso no requiere filtro de fechas
         // (se quiere ver todo lo que está pendiente sin importar cuándo entró)
@@ -77,7 +76,7 @@ class ReparacionController extends Controller
         $query = Reparacion::with(self::RELACIONES_FILA)
 
             // Filtra por estado si no es "todos"
-            ->when($estado && $estado !== 'todos', fn($q) => $q->where('estado', $estado))
+            ->when($estado !== 'todos', fn ($q) => $q->where('estado', $estado))
 
             // Aplica la búsqueda únicamente si tiene al menos 2 caracteres. Palabra por
             // palabra, en nombre, teléfono, marca o modelo (ver Reparacion::scopeBuscar)
@@ -118,13 +117,17 @@ class ReparacionController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre', 'stock']);
 
+        // Los filtros ya revisados: la vista los muestra tal cual (no lee request())
+        $filtros = compact('estado', 'periodo', 'desde', 'hasta', 'buscar', 'buscando');
+
         // Retorna la vista principal
         // junto con toda la información necesaria
         return view('admin.reparaciones.index', compact(
             'reparaciones',
             'cajasLibres',
             'contadores',
-            'displays'
+            'displays',
+            'filtros'
         ));
     }
 

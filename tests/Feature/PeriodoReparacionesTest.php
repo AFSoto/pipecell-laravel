@@ -2,11 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Admin\DashboardController;
 use App\Models\Reparacion;
 use App\Models\User;
+use App\Support\FiltroPeriodo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
@@ -17,6 +18,11 @@ use Tests\TestCase;
  * Todos cuentan por created_at, con la hora de la app (Bogotá). «Últimos 3 meses» y
  * «Últimos 6 meses» van desde el mismo día de hace 3 o 6 meses, a las 00:00, hasta hoy
  * incluido. Si ese día no existe (31 de mayo menos 3 meses), desde el último día de ese mes.
+ *
+ * Lo que llega en la URL se revisa antes de usarlo (FiltroPeriodo::delPedido): un periodo
+ * desconocido es «Este mes», una fecha que no existe cuenta como vacía, las fechas al revés
+ * se invierten y con una sola fecha el rango queda abierto. El select, los campos de fecha y
+ * el indicador muestran lo que de verdad se filtró.
  */
 class PeriodoReparacionesTest extends TestCase
 {
@@ -51,6 +57,32 @@ class PeriodoReparacionesTest extends TestCase
         return $this->idsEnLaLista($respuesta->assertOk()->getContent());
     }
 
+    /** La opción marcada en un select de la página (null si ninguna: el navegador muestra la primera). */
+    private function marcada(string $html, string $select): ?string
+    {
+        preg_match('#<select name="' . $select . '".*?</select>#s', $html, $bloque);
+        preg_match('#<option value="([a-z_]+)"\s+selected#', $bloque[0] ?? '', $opcion);
+
+        return $opcion[1] ?? null;
+    }
+
+    /** Los valores de las opciones del select de periodo. */
+    private function opcionesDePeriodo(string $html): array
+    {
+        preg_match('#<select name="periodo".*?</select>#s', $html, $bloque);
+        preg_match_all('#<option value="([a-z_]+)"#', $bloque[0] ?? '', $valores);
+
+        return $valores[1];
+    }
+
+    /** El texto del indicador de Reparaciones, sin etiquetas ni espacios de más. */
+    private function indicador(string $html): string
+    {
+        preg_match('#data-en-vivo="indicador"[^>]*>(.*?)</p>#s', $html, $texto);
+
+        return trim(preg_replace('/\s+/', ' ', strip_tags($texto[1] ?? '')));
+    }
+
     /**
      * [periodo, la que sale, la que no sale, parámetros extra], con hoy = miércoles 25 nov 2026.
      * Las fechas de «semana» sirven si la semana empieza el lunes (23) o el domingo (22).
@@ -70,6 +102,10 @@ class PeriodoReparacionesTest extends TestCase
             'este año'                     => ['anio',          '2026-01-01 00:00:00', '2025-12-31 23:59:59'],
             'personalizado, último día'    => ['personalizado', '2026-03-12 23:59:59', '2026-03-13 00:00:00', $marzo],
             'personalizado, primer día'    => ['personalizado', '2026-03-10 00:00:00', '2026-03-09 23:59:59', $marzo],
+            'personalizado al revés: se invierten' => ['personalizado', '2026-03-10 00:00:00', '2026-03-13 00:00:00', ['desde' => '2026-03-12', 'hasta' => '2026-03-10']],
+            'personalizado solo desde: hasta hoy'  => ['personalizado', '2026-06-15 10:00:00', '2026-03-09 23:59:59', ['desde' => '2026-03-10']],
+            'personalizado solo hasta: todo antes' => ['personalizado', '2025-01-15 10:00:00', '2026-03-13 00:00:00', ['hasta' => '2026-03-12']],
+            'personalizado con un día que no existe: cuenta como vacío' => ['personalizado', '2025-01-15 10:00:00', '2026-03-13 00:00:00', ['desde' => '2026-02-30', 'hasta' => '2026-03-12']],
             'personalizado sin fechas: el mes actual' => ['personalizado', '2026-11-01 00:00:00', '2026-10-31 23:59:59'],
             'periodo desconocido: el mes actual'      => ['otro',          '2026-11-01 00:00:00', '2026-10-31 23:59:59'],
         ];
@@ -141,6 +177,95 @@ class PeriodoReparacionesTest extends TestCase
         $this->assertStringContainsString('Mostrando reparaciones entregadas de los últimos 3 meses (del 23/08/2026 a hoy)', $html);
     }
 
+    /** «Personalizado»: el indicador y los campos de fecha dicen el rango que de verdad se usó. */
+    public function test_personalizado_dice_el_rango_que_se_uso(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-25 15:40:00'));
+        $pagina = fn (array $fechas) => $this->get(route('admin.reparaciones.index', ['estado' => 'todos', 'periodo' => 'personalizado'] + $fechas))
+            ->assertOk()
+            ->getContent();
+
+        // Al revés: se invierten, también en los campos
+        $html = $pagina(['desde' => '2026-03-12', 'hasta' => '2026-03-10']);
+        $this->assertSame('Mostrando todas las reparaciones del 10/03/2026 al 12/03/2026', $this->indicador($html));
+        $this->assertStringContainsString('name="desde" value="2026-03-10"', $html);
+        $this->assertStringContainsString('name="hasta" value="2026-03-12"', $html);
+
+        // Una sola fecha: el rango queda abierto
+        $this->assertSame('Mostrando todas las reparaciones desde el 10/03/2026', $this->indicador($pagina(['desde' => '2026-03-10'])));
+        $this->assertSame('Mostrando todas las reparaciones hasta el 12/03/2026', $this->indicador($pagina(['hasta' => '2026-03-12'])));
+
+        // Sin ninguna fecha que sirva: el mes actual, y el select lo dice
+        $html = $pagina(['desde' => 'abc', 'hasta' => '2026-02-30']);
+        $this->assertSame('mes', $this->marcada($html, 'periodo'));
+        $this->assertSame('Mostrando todas las reparaciones de este mes', $this->indicador($html));
+    }
+
+    /**
+     * [query string, estado marcado, periodo marcado, indicador]. Ninguna da error, y el
+     * select marca lo que de verdad se filtró (antes, sin nada marcado, se veía «Hoy»).
+     */
+    public static function urlsRarasDeReparaciones(): array
+    {
+        $esteMes = 'Mostrando todas las reparaciones de este mes';
+
+        return [
+            'periodo vacío'          => ['estado=todos&periodo=',                                     'todos',      'mes', $esteMes],
+            'periodo como lista'     => ['estado=todos&periodo[]=semestre',                           'todos',      'mes', $esteMes],
+            'periodo desconocido'    => ['estado=todos&periodo=xyz',                                  'todos',      'mes', $esteMes],
+            'periodo en mayúsculas'  => ['estado=todos&periodo=SEMESTRE',                             'todos',      'mes', $esteMes],
+            'fechas que no son fechas' => ['estado=todos&periodo=personalizado&desde=abc&hasta=def',  'todos',      'mes', $esteMes],
+            'fechas como lista'      => ['estado=todos&periodo=personalizado&desde[]=x&hasta[]=y',    'todos',      'mes', $esteMes],
+            'búsqueda como lista'    => ['estado=todos&periodo=mes&buscar[]=x',                       'todos',      'mes', $esteMes],
+            'estado desconocido'     => ['estado=xyz&periodo=semestre',                               'en_proceso', 'semestre', 'Mostrando reparaciones en proceso'],
+            'estado como lista'      => ['estado[]=todos',                                            'en_proceso', 'mes', 'Mostrando reparaciones en proceso'],
+        ];
+    }
+
+    #[DataProvider('urlsRarasDeReparaciones')]
+    public function test_una_url_rara_en_reparaciones_no_da_error(string $query, string $estado, string $periodo, string $indicador): void
+    {
+        $html = $this->get('/admin/reparaciones?' . $query)->assertOk()->getContent();
+
+        $this->assertSame($estado, $this->marcada($html, 'estado'));
+        $this->assertSame($periodo, $this->marcada($html, 'periodo'));
+        $this->assertSame($indicador, $this->indicador($html));
+    }
+
+    /** [query string]: en el Dashboard todas terminan en «Este mes», también «Últimos 6 meses», que no ofrece. */
+    public static function urlsRarasDelDashboard(): array
+    {
+        return [
+            'periodo vacío'       => ['periodo='],
+            'periodo como lista'  => ['periodo[]=x'],
+            'periodo desconocido' => ['periodo=xyz'],
+            'últimos 6 meses (solo está en Reparaciones)' => ['periodo=semestre'],
+            'fechas que no son fechas' => ['periodo=personalizado&desde=abc&hasta[]=y'],
+        ];
+    }
+
+    #[DataProvider('urlsRarasDelDashboard')]
+    public function test_una_url_rara_en_el_dashboard_no_da_error(string $query): void
+    {
+        $respuesta = $this->get('/admin/dashboard?' . $query)->assertOk();
+
+        $respuesta->assertViewHas('periodo', 'mes');
+        $this->assertSame('mes', $this->marcada($respuesta->getContent(), 'periodo'));
+    }
+
+    /** Si alguien agrega una opción al select sin que el filtro la acepte (o al revés), esto falla. */
+    public function test_cada_select_ofrece_lo_que_su_controlador_acepta(): void
+    {
+        $reparaciones = $this->opcionesDePeriodo($this->get(route('admin.reparaciones.index', ['estado' => 'todos']))->getContent());
+        $dashboard    = $this->opcionesDePeriodo($this->get(route('admin.dashboard'))->assertOk()->getContent());
+
+        $this->assertEqualsCanonicalizing(FiltroPeriodo::PERIODOS, $reparaciones);
+        $this->assertEqualsCanonicalizing(DashboardController::PERIODOS, $dashboard);
+
+        // «Últimos 6 meses» va solo en Reparaciones
+        $this->assertNotContains('semestre', DashboardController::PERIODOS);
+    }
+
     /** El Dashboard filtra con el mismo cálculo (también recibe la corrección de fin de mes). */
     public function test_el_dashboard_cuenta_igual_y_no_ofrece_6_meses(): void
     {
@@ -149,12 +274,7 @@ class PeriodoReparacionesTest extends TestCase
 
         $this->travelTo(Carbon::parse('2026-05-31 10:00:00'));
 
-        // La gráfica de ingresos del año usa MONTH(), que MySQL tiene y SQLite no: se agrega
-        // aquí, solo para poder abrir el Dashboard en la prueba (createFunction desde PHP 8.4)
-        $pdo = DB::connection()->getPdo();
-        $mes = fn (?string $fecha) => $fecha === null ? null : (int) substr($fecha, 5, 2);
-        $pdo instanceof \Pdo\Sqlite ? $pdo->createFunction('MONTH', $mes, 1) : $pdo->sqliteCreateFunction('MONTH', $mes, 1);
-
+        // Sin registrar MONTH() aquí: tests/TestCase.php lo agrega a SQLite en todos los tests
         $respuesta = $this->get(route('admin.dashboard', ['periodo' => 'trimestre']))->assertOk();
 
         $respuesta->assertViewHas('metricas', fn ($metricas) => (int) $metricas->completadas === 1);
@@ -162,6 +282,20 @@ class PeriodoReparacionesTest extends TestCase
 
         // «Últimos 6 meses» va solo en Reparaciones
         $this->assertStringNotContainsString('value="semestre"', $respuesta->getContent());
+    }
+
+    /** Con «Últimos 6 meses» en la URL, el Dashboard (que no lo ofrece) muestra este mes. */
+    public function test_el_dashboard_con_6_meses_muestra_este_mes(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-25 15:40:00'));
+
+        $this->reparacionDel('2026-11-02 10:00:00', ['estado' => 'entregado']);   // este mes
+        $this->reparacionDel('2026-08-10 10:00:00', ['estado' => 'entregado']);   // en 6 meses, no en este mes
+
+        $this->get(route('admin.dashboard', ['periodo' => 'semestre']))
+            ->assertOk()
+            ->assertViewHas('periodo', 'mes')
+            ->assertViewHas('metricas', fn ($metricas) => (int) $metricas->completadas === 1);
     }
 
     public function test_en_proceso_no_filtra_por_fecha(): void

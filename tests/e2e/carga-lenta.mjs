@@ -1,6 +1,6 @@
 // Se escribe en el buscador antes de que corra el JS (red lenta en el iPad): al cargar, lo
 // escrito se busca solo. Antes la lista quedaba sin filtrar y Enter no hacía nada.
-import { dormir, esperarBusqueda, USUARIO } from './lib.mjs';
+import { bloquearPusher, dormir, esperarBusqueda, USUARIO } from './lib.mjs';
 
 export const titulo = 'JS que llega tarde';
 
@@ -11,7 +11,7 @@ export async function correr({ navegador, app, revisar }) {
     // Contexto propio en el que el JS de la app llega vacío desde el principio: si se
     // demorara, el navegador podría usar la copia de la caché y no habría demora
     const contexto = await navegador.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true });
-    await contexto.route(/pusher/, ruta => ruta.abort());
+    await bloquearPusher(contexto);
     await contexto.route(esElJsDeLaApp, ruta => ruta.fulfill({ contentType: 'text/javascript', body: '' }));
 
     const pagina  = await contexto.newPage();

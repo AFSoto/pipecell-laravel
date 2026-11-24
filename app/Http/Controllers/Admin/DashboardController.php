@@ -29,20 +29,25 @@ use Illuminate\Support\Facades\DB;
 class DashboardController extends Controller
 {
     /**
+     * Los periodos del select del Dashboard: los de FiltroPeriodo menos «Últimos 6 meses»
+     * (semestre), que va solo en Reparaciones. Cualquier otro valor en la URL es «Este mes».
+     * Tiene que coincidir con el select de dashboard.blade.php (PeriodoReparacionesTest lo revisa).
+     */
+    public const PERIODOS = ['hoy', 'semana', 'mes', 'mes_pasado', 'trimestre', 'anio', 'personalizado'];
+
+    /**
      * Muestra el dashboard con todos los datos del negocio.
      *
      * Parámetros GET aceptados:
-     *   - periodo:  hoy | semana | mes | mes_pasado | trimestre | anio | personalizado
-     *               (las fechas de cada uno: App\Support\FiltroPeriodo)
+     *   - periodo:  uno de PERIODOS (las fechas de cada uno: App\Support\FiltroPeriodo)
      *   - desde:    fecha (YYYY-MM-DD) — solo cuando periodo = personalizado
      *   - hasta:    fecha (YYYY-MM-DD) — solo cuando periodo = personalizado
      */
     public function index(Request $request)
     {
-        // Leer parámetros del filtro — 'mes' es el valor por defecto
-        $periodo = $request->input('periodo', 'mes');
-        $desde   = $request->input('desde');
-        $hasta   = $request->input('hasta');
+        // Periodo y fechas, revisados: desconocido → «mes», fechas inválidas → vacías,
+        // al revés → invertidas. La vista muestra estos mismos valores en el select
+        ['periodo' => $periodo, 'desde' => $desde, 'hasta' => $hasta] = FiltroPeriodo::delPedido($request, self::PERIODOS);
 
         // ── 1. MÉTRICAS DEL PERIODO SELECCIONADO ──
         // Una sola consulta SQL con SUM/COUNT para ingresos, ganancia y completadas

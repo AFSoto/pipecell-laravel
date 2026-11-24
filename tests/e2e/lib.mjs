@@ -21,12 +21,23 @@ export function crearRevisor(motor) {
 }
 
 /**
- * Pestaña nueva con la sesión iniciada. Pusher se bloquea (el servidor de prueba no
- * transmite) y sus errores no cuentan; los demás errores de JavaScript quedan en errores.
+ * Bloquea Pusher en el contexto: el servidor de prueba no transmite. route() no ataja los
+ * WebSocket: sin routeWebSocket() el navegador se conectaba al Pusher de verdad (con la clave
+ * del build) y le pedía a /broadcasting/auth permiso para los canales, y WebKit informaba como
+ * errores esos pedidos cortados al cambiar de página.
+ */
+export async function bloquearPusher(contexto) {
+    await contexto.route(/pusher/, ruta => ruta.abort());
+    await contexto.routeWebSocket(/pusher/, socket => socket.close());
+}
+
+/**
+ * Pestaña nueva con la sesión iniciada. Pusher se bloquea (bloquearPusher) y sus errores no
+ * cuentan; los demás errores de JavaScript quedan en errores.
  */
 export async function nuevaPagina(navegador, app) {
     const contexto = await navegador.newContext(PANTALLA);
-    await contexto.route(/pusher/, ruta => ruta.abort());
+    await bloquearPusher(contexto);
 
     const pagina  = await contexto.newPage();
     const errores = [];

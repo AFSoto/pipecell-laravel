@@ -1,10 +1,10 @@
-// Pruebas de navegador de la búsqueda en vivo (Productos y Reparaciones), en WebKit (el motor
-// de Safari, el del iPad) y en Chromium, contra la app con una base SQLite temporal: nunca
-// toca MySQL. Ver README.md.
+// Pruebas de navegador de la búsqueda en vivo (Productos y Reparaciones) y del filtro de periodo,
+// en WebKit (el motor de Safari, el del iPad) y en Chromium, contra la app con una base SQLite
+// temporal: nunca toca MySQL. Ver README.md.
 //
 //   npm run e2e                          todas, en WebKit y Chromium
 //   npm run e2e -- --motor webkit        un solo motor
-//   npm run e2e -- --solo reparaciones   una sola prueba (productos, reparaciones o carga-lenta)
+//   npm run e2e -- --solo reparaciones   una sola prueba (productos, reparaciones, periodo o carga-lenta)
 //   npm run e2e -- --capturas <carpeta>  además guarda capturas
 //   npm run e2e:rendimiento              3.000 reparaciones: lo que pesa y tarda una búsqueda
 import { spawn, execFileSync } from 'node:child_process';
@@ -16,6 +16,7 @@ import { chromium, webkit } from 'playwright-core';
 import { crearRevisor, dormir } from './lib.mjs';
 import * as productos from './productos.mjs';
 import * as reparaciones from './reparaciones.mjs';
+import * as periodo from './periodo.mjs';
 import * as cargaLenta from './carga-lenta.mjs';
 import * as rendimiento from './rendimiento.mjs';
 
@@ -33,7 +34,7 @@ const opcion      = nombre => { const i = args.indexOf(nombre); return i === -1 
 const esRendimiento = args.includes('--rendimiento');
 const motores     = opcion('--motor') ? [opcion('--motor')] : (esRendimiento ? ['webkit'] : ['webkit', 'chromium']);
 const capturas    = opcion('--capturas') ? resolve(opcion('--capturas')) : null;
-const TODAS       = { productos, reparaciones, 'carga-lenta': cargaLenta };
+const TODAS       = { productos, reparaciones, periodo, 'carga-lenta': cargaLenta };
 const solo        = opcion('--solo');
 const suites      = esRendimiento ? [rendimiento] : (solo ? [TODAS[solo]] : Object.values(TODAS));
 
