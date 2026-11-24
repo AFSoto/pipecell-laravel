@@ -68,4 +68,12 @@ trait CreaDatosDeReparacion
             'abono_inicial'    => 50000,
         ], $datos), $usuario->id);
     }
+
+    /** Ids de las filas de la lista de Reparaciones, en el orden en que salen. */
+    protected function idsEnLaLista(string $html): array
+    {
+        preg_match_all('/class="transition reparacion-row[^"]*"\s+data-id="(\d+)"/', $html, $ids);
+
+        return array_map('intval', $ids[1]);
+    }
 }

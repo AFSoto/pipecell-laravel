@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Caja;
 use App\Models\Reparacion;
 use App\Enums\EstadoReparacion;
+use App\Support\FiltroPeriodo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -32,6 +33,7 @@ class DashboardController extends Controller
      *
      * Parámetros GET aceptados:
      *   - periodo:  hoy | semana | mes | mes_pasado | trimestre | anio | personalizado
+     *               (las fechas de cada uno: App\Support\FiltroPeriodo)
      *   - desde:    fecha (YYYY-MM-DD) — solo cuando periodo = personalizado
      *   - hasta:    fecha (YYYY-MM-DD) — solo cuando periodo = personalizado
      */
@@ -63,7 +65,7 @@ class DashboardController extends Controller
             ->select('estado', DB::raw('COUNT(*) as total'))
             ->groupBy('estado');
 
-        $this->aplicarFiltroPeriodo($queryContadores, $periodo, $desde, $hasta);
+        FiltroPeriodo::aplicar($queryContadores, $periodo, $desde, $hasta);
 
         $contadoresBD = $queryContadores->pluck('total', 'estado');
 
@@ -134,71 +136,6 @@ class DashboardController extends Controller
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Aplica el filtro de periodo a un query builder de Eloquent.
-     *
-     * El query se modifica directamente (los objetos en PHP se pasan
-     * por referencia implícitamente), por eso no retorna nada.
-     *
-     * Este método es la fuente de verdad para el filtro de periodo —
-     * replicar esta lógica en otro lado crea inconsistencias.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     */
-    private function aplicarFiltroPeriodo($query, string $periodo, ?string $desde, ?string $hasta): void
-    {
-        switch ($periodo) {
-
-            case 'hoy':
-                // Solo registros del día de hoy (ignora la hora)
-                $query->whereDate('created_at', today());
-                break;
-
-            case 'semana':
-                // Semana actual de lunes a domingo según la zona horaria de la app
-                $query->whereBetween('created_at', [
-                    now()->startOfWeek(),
-                    now()->endOfWeek(),
-                ]);
-                break;
-
-            case 'mes_pasado':
-                $mesAnterior = now()->subMonthNoOverflow();
-                $query->whereMonth('created_at', $mesAnterior->month)
-                    ->whereYear('created_at', $mesAnterior->year);
-                break;
-
-            case 'trimestre':
-                // Últimos 90 días (aproximado — 3 meses hacia atrás desde hoy)
-                $query->whereBetween('created_at', [
-                    now()->subMonths(3)->startOfDay(),
-                    now()->endOfDay(),
-                ]);
-                break;
-
-            case 'anio':
-                // Año en curso completo (enero 1 hasta hoy)
-                $query->whereYear('created_at', now()->year);
-                break;
-
-            case 'personalizado':
-                // Rango personalizado — si faltan fechas, cae al mes actual
-                if ($desde && $hasta) {
-                    // Se agrega ' 23:59:59' al $hasta para incluir todo el día final
-                    $query->whereBetween('created_at', [$desde, $hasta . ' 23:59:59']);
-                } else {
-                    $query->whereMonth('created_at', now()->month)
-                        ->whereYear('created_at', now()->year);
-                }
-                break;
-
-            default: // 'mes' — default de la aplicación
-                // Mes en curso
-                $query->whereMonth('created_at', now()->month)
-                    ->whereYear('created_at', now()->year);
-        }
-    }
-
-    /**
      * Obtiene ingresos totales, ganancia neta y conteo de reparaciones
      * entregadas del periodo seleccionado — todo en UNA sola consulta SQL.
      *
@@ -219,7 +156,7 @@ class DashboardController extends Controller
             ');
 
         // Aplicamos el mismo filtro de periodo que se usa en reparaciones
-        $this->aplicarFiltroPeriodo($query, $periodo, $desde, $hasta);
+        FiltroPeriodo::aplicar($query, $periodo, $desde, $hasta);
 
         // ->first() retorna un stdObject con las propiedades ingresos, ganancia_neta, completadas
         return $query->first();

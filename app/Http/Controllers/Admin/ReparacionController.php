@@ -13,6 +13,7 @@ use App\Models\Producto;
 use App\Models\Reparacion;
 use App\Services\NotificacionService;
 use App\Services\ReparacionService;
+use App\Support\FiltroPeriodo;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -87,58 +88,9 @@ class ReparacionController extends Controller
             ->latest()
             ->orderByDesc('id');
 
-        // Solo aplica filtros de fecha
-        // cuando el estado lo requiere
+        // Filtro de fechas: el mismo cálculo que el Dashboard (ver FiltroPeriodo)
         if (! $sinFiltroFecha) {
-
-            // Filtrar reparaciones del día actual
-            if ($periodo === 'hoy') {
-
-                $query->whereDate('created_at', today());
-
-                // Filtrar reparaciones de la semana actual
-            } elseif ($periodo === 'semana') {
-
-                $query->whereBetween('created_at', [
-                    now()->startOfWeek(),
-                    now()->endOfWeek()
-                ]);
-
-                // Filtrar reparaciones del mes pasado
-            } elseif ($periodo === 'mes_pasado') {
-
-                $mesAnterior = now()->subMonthNoOverflow();
-
-                $query->whereMonth('created_at', $mesAnterior->month)
-                    ->whereYear('created_at', $mesAnterior->year);
-
-                // Filtrar últimos 3 meses
-            } elseif ($periodo === 'trimestre') {
-
-                $query->whereBetween('created_at', [
-                    now()->subMonths(3)->startOfDay(),
-                    now()->endOfDay()
-                ]);
-
-                // Filtrar año actual
-            } elseif ($periodo === 'anio') {
-
-                $query->whereYear('created_at', now()->year);
-
-                // Filtrar rango personalizado
-            } elseif ($periodo === 'personalizado' && $desde && $hasta) {
-
-                $query->whereBetween('created_at', [
-                    $desde,
-                    $hasta . ' 23:59:59'
-                ]);
-
-                // Filtro por defecto: mes actual
-            } else {
-
-                $query->whereMonth('created_at', now()->month)
-                    ->whereYear('created_at', now()->year);
-            }
+            FiltroPeriodo::aplicar($query, $periodo, $desde, $hasta);
         }
 
 

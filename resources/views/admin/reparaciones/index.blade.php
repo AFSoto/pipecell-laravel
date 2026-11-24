@@ -150,8 +150,10 @@
                 {{-- Mostrar reparaciones del mes pasado --}}
                 <option value="mes_pasado"    {{ $fPeriodo === 'mes_pasado'    ? 'selected' : '' }}>Mes pasado</option>
 
-                {{-- Mostrar reparaciones de los últimos 3 meses --}}
+                {{-- Últimos 3 y 6 meses: desde el mismo día de hace 3 o 6 meses hasta hoy
+                     incluido (App\Support\FiltroPeriodo) --}}
                 <option value="trimestre"     {{ $fPeriodo === 'trimestre'     ? 'selected' : '' }}>Últimos 3 meses</option>
+                <option value="semestre"      {{ $fPeriodo === 'semestre'      ? 'selected' : '' }}>Últimos 6 meses</option>
 
                 {{-- Mostrar reparaciones del año actual --}}
                 <option value="anio"          {{ $fPeriodo === 'anio'          ? 'selected' : '' }}>Este año</option>
@@ -251,11 +253,16 @@
                 default      => null,
             };
 
+            // Los últimos 3 y 6 meses dicen desde qué día cuentan: la misma fecha con la que
+            // filtra el controlador, y así se ve que hoy entra
+            $desdeHaceMeses = fn (int $meses) => 'del ' . \App\Support\FiltroPeriodo::inicioUltimosMeses($meses)->format('d/m/Y') . ' a hoy';
+
             $periodoLabel = match($fPeriodo) {
                 'hoy'          => 'de hoy',
                 'semana'       => 'de esta semana',
                 'mes_pasado'   => 'del mes pasado',
-                'trimestre'    => 'de los últimos 3 meses',
+                'trimestre'    => 'de los últimos 3 meses (' . $desdeHaceMeses(3) . ')',
+                'semestre'     => 'de los últimos 6 meses (' . $desdeHaceMeses(6) . ')',
                 'anio'         => 'de este año',
                 'personalizado'=> ($fDesde && $fHasta)
                     ? 'del ' . \Carbon\Carbon::parse($fDesde)->format('d/m/Y') . ' al ' . \Carbon\Carbon::parse($fHasta)->format('d/m/Y')

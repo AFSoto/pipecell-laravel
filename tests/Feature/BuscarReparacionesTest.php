@@ -37,14 +37,6 @@ class BuscarReparacionesTest extends TestCase
         return $this->get(route('admin.reparaciones.index', ['estado' => 'todos', 'periodo' => 'anio', 'buscar' => $texto] + $extra));
     }
 
-    /** Ids de las filas de la tabla, en orden. */
-    private function idsEnLaLista(string $html): array
-    {
-        preg_match_all('/class="transition reparacion-row[^"]*"\s+data-id="(\d+)"/', $html, $ids);
-
-        return array_map('intval', $ids[1]);
-    }
-
     private function encontradas(string $texto): array
     {
         return $this->idsEnLaLista($this->buscar($texto)->assertOk()->getContent());
