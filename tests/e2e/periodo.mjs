@@ -37,14 +37,27 @@ export async function correr({ navegador, app, revisar }) {
     const { contexto, pagina, errores } = await nuevaPagina(navegador, app);
     let v;
 
-    // 1. «Últimos 6 meses» desde el select, y la página 2
-    await pagina.goto(`${app}/admin/reparaciones?estado=todos`);
-    await elegirPeriodo(pagina, 'semestre');
+    // 1. El periodo predefinido, por el camino de siempre: se entra a Reparaciones («En proceso»,
+    //    sin periodo) y se elige «Todos». El formulario manda lo que muestra el select de periodo
+    //    (oculto en «En proceso»): «Últimos 6 meses»
+    await pagina.goto(`${app}/admin/reparaciones`);
+    await Promise.all([
+        pagina.waitForURL(url => new URL(url).searchParams.get('estado') === 'todos'),
+        pagina.selectOption('#select-estado', 'todos'),
+    ]);
     v = await ver(pagina);
-    revisar(v.periodo === 'Últimos 6 meses'
+    revisar(v.filtros.periodo === 'semestre' && v.periodo === 'Últimos 6 meses'
         && new RegExp(`^Mostrando todas las reparaciones de los últimos 6 meses ${DESDE_HACE_6_MESES}$`).test(v.indicador),
-        'Elegir «Últimos 6 meses» recarga con esa opción y dice desde cuándo cuenta', `${v.periodo} · «${v.indicador}»`);
+        'De «En proceso» a «Todos»: el periodo arranca en «Últimos 6 meses» y dice desde cuándo cuenta',
+        `${JSON.stringify(v.filtros)} · ${v.periodo} · «${v.indicador}»`);
     revisar(v.filas === 10, 'Las 15 de hoy: 10 en la página 1', `${v.filas} filas`);
+
+    // Se puede elegir otro periodo y volver
+    await elegirPeriodo(pagina, 'mes');
+    v = await ver(pagina);
+    revisar(v.periodo === 'Este mes' && v.indicador === 'Mostrando todas las reparaciones de este mes',
+        'Elegir «Este mes» recarga con esa opción', `${v.periodo} · «${v.indicador}»`);
+    await elegirPeriodo(pagina, 'semestre');
 
     // Laravel pone dos enlaces a la página 2: el de teléfono (oculto en el iPad) y el numerado
     await Promise.all([pagina.waitForURL(/page=2/), pagina.locator('a[href*="page=2"]:visible').first().click()]);

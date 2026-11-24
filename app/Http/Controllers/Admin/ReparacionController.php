@@ -39,6 +39,14 @@ class ReparacionController extends Controller
     private const POR_PAGINA          = 10;
     private const POR_PAGINA_BUSCANDO = 25;
 
+    /**
+     * Periodo predefinido: el que se ve al pasar de «En proceso» (que no filtra por fecha) a
+     * Todos, Arreglados o Entregados, y el que queda si la URL trae uno que no sirve. Seis
+     * meses muestran casi todo lo que se busca a diario; «Este mes» dejaba fuera lo de hace
+     * pocas semanas. El Dashboard sigue en «Este mes» (no ofrece 6 meses).
+     */
+    private const PERIODO_POR_DEFECTO = 'semestre';
+
     public function __construct(
         private ReparacionService $reparacionService,
         private NotificacionService $notificacionService
@@ -59,8 +67,10 @@ class ReparacionController extends Controller
             ? $estado
             : 'en_proceso';
 
-        // Periodo y fechas, revisados (desconocido → «mes», fechas al revés → invertidas...)
-        ['periodo' => $periodo, 'desde' => $desde, 'hasta' => $hasta] = FiltroPeriodo::delPedido($request);
+        // Periodo y fechas, revisados (falta o desconocido → el predefinido, fechas al revés →
+        // invertidas...)
+        ['periodo' => $periodo, 'desde' => $desde, 'hasta' => $hasta]
+            = FiltroPeriodo::delPedido($request, FiltroPeriodo::PERIODOS, self::PERIODO_POR_DEFECTO);
 
         // Lo escrito en el buscador. Se busca desde 2 letras, contadas como en el JS (una «ñ»
         // es una letra): con una sola, que llega al cambiar un select, no hay búsqueda
@@ -117,8 +127,10 @@ class ReparacionController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre', 'stock']);
 
-        // Los filtros ya revisados: la vista los muestra tal cual (no lee request())
-        $filtros = compact('estado', 'periodo', 'desde', 'hasta', 'buscar', 'buscando');
+        // Los filtros ya revisados: la vista los muestra tal cual (no lee request()). Con el
+        // predefinido sabe si el periodo cuenta como filtro extra («Limpiar filtros»)
+        $filtros = compact('estado', 'periodo', 'desde', 'hasta', 'buscar', 'buscando')
+            + ['periodoPorDefecto' => self::PERIODO_POR_DEFECTO];
 
         // Retorna la vista principal
         // junto con toda la información necesaria

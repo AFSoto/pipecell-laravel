@@ -20,9 +20,10 @@ use Tests\TestCase;
  * incluido. Si ese día no existe (31 de mayo menos 3 meses), desde el último día de ese mes.
  *
  * Lo que llega en la URL se revisa antes de usarlo (FiltroPeriodo::delPedido): un periodo
- * desconocido es «Este mes», una fecha que no existe cuenta como vacía, las fechas al revés
- * se invierten y con una sola fecha el rango queda abierto. El select, los campos de fecha y
- * el indicador muestran lo que de verdad se filtró.
+ * vacío o desconocido es el predefinido de la página (Reparaciones: «Últimos 6 meses»;
+ * Dashboard: «Este mes»), una fecha que no existe cuenta como vacía, las fechas al revés se
+ * invierten y con una sola fecha el rango queda abierto. El select, los campos de fecha y el
+ * indicador muestran lo que de verdad se filtró.
  */
 class PeriodoReparacionesTest extends TestCase
 {
@@ -106,8 +107,8 @@ class PeriodoReparacionesTest extends TestCase
             'personalizado solo desde: hasta hoy'  => ['personalizado', '2026-06-15 10:00:00', '2026-03-09 23:59:59', ['desde' => '2026-03-10']],
             'personalizado solo hasta: todo antes' => ['personalizado', '2025-01-15 10:00:00', '2026-03-13 00:00:00', ['hasta' => '2026-03-12']],
             'personalizado con un día que no existe: cuenta como vacío' => ['personalizado', '2025-01-15 10:00:00', '2026-03-13 00:00:00', ['desde' => '2026-02-30', 'hasta' => '2026-03-12']],
-            'personalizado sin fechas: el mes actual' => ['personalizado', '2026-11-01 00:00:00', '2026-10-31 23:59:59'],
-            'periodo desconocido: el mes actual'      => ['otro',          '2026-11-01 00:00:00', '2026-10-31 23:59:59'],
+            'personalizado sin fechas: el predefinido, 6 meses' => ['personalizado', '2026-05-25 00:00:00', '2026-05-24 23:59:59'],
+            'periodo desconocido: el predefinido, 6 meses'      => ['otro',          '2026-05-25 00:00:00', '2026-05-24 23:59:59'],
         ];
     }
 
@@ -195,36 +196,73 @@ class PeriodoReparacionesTest extends TestCase
         $this->assertSame('Mostrando todas las reparaciones desde el 10/03/2026', $this->indicador($pagina(['desde' => '2026-03-10'])));
         $this->assertSame('Mostrando todas las reparaciones hasta el 12/03/2026', $this->indicador($pagina(['hasta' => '2026-03-12'])));
 
-        // Sin ninguna fecha que sirva: el mes actual, y el select lo dice
+        // Sin ninguna fecha que sirva: el periodo predefinido (Últimos 6 meses), y el select lo dice
         $html = $pagina(['desde' => 'abc', 'hasta' => '2026-02-30']);
-        $this->assertSame('mes', $this->marcada($html, 'periodo'));
-        $this->assertSame('Mostrando todas las reparaciones de este mes', $this->indicador($html));
+        $this->assertSame('semestre', $this->marcada($html, 'periodo'));
+        $this->assertSame('Mostrando todas las reparaciones de los últimos 6 meses (del 25/05/2026 a hoy)', $this->indicador($html));
     }
 
     /**
-     * [query string, estado marcado, periodo marcado, indicador]. Ninguna da error, y el
-     * select marca lo que de verdad se filtró (antes, sin nada marcado, se veía «Hoy»).
+     * Sin periodo en la URL (como al pasar de «En proceso» a «Todos»), Reparaciones arranca en
+     * «Últimos 6 meses»: es el periodo predefinido.
+     */
+    public function test_sin_periodo_en_la_url_arranca_en_los_ultimos_6_meses(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-25 15:40:00'));
+
+        $dentro = $this->reparacionDel('2026-05-25 00:00:00');
+        $this->reparacionDel('2026-05-24 23:59:59');
+
+        $html = $this->get(route('admin.reparaciones.index', ['estado' => 'todos']))->assertOk()->getContent();
+
+        $this->assertSame('semestre', $this->marcada($html, 'periodo'));
+        $this->assertSame('Mostrando todas las reparaciones de los últimos 6 meses (del 25/05/2026 a hoy)', $this->indicador($html));
+        $this->assertSame([$dentro->id], $this->idsEnLaLista($html));
+    }
+
+    /** «Limpiar filtros» no sale solo por estar en el periodo predefinido; con otro periodo, sí. */
+    public function test_limpiar_filtros_no_sale_por_el_periodo_predefinido(): void
+    {
+        $this->get(route('admin.reparaciones.index', ['estado' => 'todos']))
+            ->assertOk()
+            ->assertDontSee('Limpiar filtros');
+
+        $this->get(route('admin.reparaciones.index', ['estado' => 'todos', 'periodo' => 'semestre']))
+            ->assertOk()
+            ->assertDontSee('Limpiar filtros');
+
+        $this->get(route('admin.reparaciones.index', ['estado' => 'todos', 'periodo' => 'mes']))
+            ->assertOk()
+            ->assertSee('Limpiar filtros');
+    }
+
+    /**
+     * [query string, estado marcado, periodo marcado, indicador], con hoy = 25 nov 2026. Ninguna
+     * da error, y el select marca lo que de verdad se filtró (antes, sin nada marcado, se veía
+     * «Hoy»). Lo que no sirve queda en el predefinido: «Últimos 6 meses».
      */
     public static function urlsRarasDeReparaciones(): array
     {
-        $esteMes = 'Mostrando todas las reparaciones de este mes';
+        $seisMeses = 'Mostrando todas las reparaciones de los últimos 6 meses (del 25/05/2026 a hoy)';
 
         return [
-            'periodo vacío'          => ['estado=todos&periodo=',                                     'todos',      'mes', $esteMes],
-            'periodo como lista'     => ['estado=todos&periodo[]=semestre',                           'todos',      'mes', $esteMes],
-            'periodo desconocido'    => ['estado=todos&periodo=xyz',                                  'todos',      'mes', $esteMes],
-            'periodo en mayúsculas'  => ['estado=todos&periodo=SEMESTRE',                             'todos',      'mes', $esteMes],
-            'fechas que no son fechas' => ['estado=todos&periodo=personalizado&desde=abc&hasta=def',  'todos',      'mes', $esteMes],
-            'fechas como lista'      => ['estado=todos&periodo=personalizado&desde[]=x&hasta[]=y',    'todos',      'mes', $esteMes],
-            'búsqueda como lista'    => ['estado=todos&periodo=mes&buscar[]=x',                       'todos',      'mes', $esteMes],
+            'periodo vacío'          => ['estado=todos&periodo=',                                     'todos',      'semestre', $seisMeses],
+            'periodo como lista'     => ['estado=todos&periodo[]=semestre',                           'todos',      'semestre', $seisMeses],
+            'periodo desconocido'    => ['estado=todos&periodo=xyz',                                  'todos',      'semestre', $seisMeses],
+            'periodo en mayúsculas'  => ['estado=todos&periodo=SEMESTRE',                             'todos',      'semestre', $seisMeses],
+            'fechas que no son fechas' => ['estado=todos&periodo=personalizado&desde=abc&hasta=def',  'todos',      'semestre', $seisMeses],
+            'fechas como lista'      => ['estado=todos&periodo=personalizado&desde[]=x&hasta[]=y',    'todos',      'semestre', $seisMeses],
+            'búsqueda como lista'    => ['estado=todos&periodo=mes&buscar[]=x',                       'todos',      'mes', 'Mostrando todas las reparaciones de este mes'],
             'estado desconocido'     => ['estado=xyz&periodo=semestre',                               'en_proceso', 'semestre', 'Mostrando reparaciones en proceso'],
-            'estado como lista'      => ['estado[]=todos',                                            'en_proceso', 'mes', 'Mostrando reparaciones en proceso'],
+            'estado como lista'      => ['estado[]=todos',                                            'en_proceso', 'semestre', 'Mostrando reparaciones en proceso'],
         ];
     }
 
     #[DataProvider('urlsRarasDeReparaciones')]
     public function test_una_url_rara_en_reparaciones_no_da_error(string $query, string $estado, string $periodo, string $indicador): void
     {
+        $this->travelTo(Carbon::parse('2026-11-25 15:40:00'));
+
         $html = $this->get('/admin/reparaciones?' . $query)->assertOk()->getContent();
 
         $this->assertSame($estado, $this->marcada($html, 'estado'));

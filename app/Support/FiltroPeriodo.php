@@ -29,18 +29,20 @@ final class FiltroPeriodo
 
     /**
      * Periodo y fechas del pedido, ya revisados:
-     *   - periodo: uno de $permitidos. Si no (vacío, una lista, desconocido, o uno que esa
-     *     página no ofrece): «mes».
+     *   - periodo: uno de $permitidos. Si no (falta, vacío, una lista, desconocido, o uno que
+     *     esa página no ofrece): $porDefecto, el predefinido de la página (Reparaciones:
+     *     «Últimos 6 meses»; Dashboard: «Este mes»).
      *   - desde / hasta: solo fechas YYYY-MM-DD que existen. Si no: null. Al revés (desde
      *     después de hasta), se invierten.
-     *   - «personalizado» sin ninguna fecha que sirva: «mes».
+     *   - «personalizado» sin ninguna fecha que sirva: $porDefecto.
      *
+     * @param  string  $porDefecto  Tiene que ser uno de $permitidos
      * @return array{periodo: string, desde: ?string, hasta: ?string}
      */
-    public static function delPedido(Request $request, array $permitidos = self::PERIODOS): array
+    public static function delPedido(Request $request, array $permitidos = self::PERIODOS, string $porDefecto = 'mes'): array
     {
         $periodo = $request->input('periodo');
-        $periodo = is_string($periodo) && in_array($periodo, $permitidos, true) ? $periodo : 'mes';
+        $periodo = is_string($periodo) && in_array($periodo, $permitidos, true) ? $periodo : $porDefecto;
 
         $desde = self::fecha($request->input('desde'));
         $hasta = self::fecha($request->input('hasta'));
@@ -50,7 +52,7 @@ final class FiltroPeriodo
         }
 
         if ($periodo === 'personalizado' && ! $desde && ! $hasta) {
-            $periodo = 'mes';
+            $periodo = $porDefecto;
         }
 
         return ['periodo' => $periodo, 'desde' => $desde, 'hasta' => $hasta];

@@ -93,10 +93,11 @@
     // Solo en_proceso no necesita filtro de fechas
     $sinFiltroFecha  = $fEstado === 'en_proceso';
 
-    // Verifica si existen filtros adicionales activos
+    // Verifica si existen filtros adicionales activos. El periodo predefinido (Últimos 6 meses,
+    // ReparacionController::PERIODO_POR_DEFECTO) no cuenta como filtro: no muestra «Limpiar filtros»
     $hayFiltrosExtra = $fBuscar
         || ($fEstado && $fEstado !== 'todos')
-        || (!$sinFiltroFecha && $fPeriodo && $fPeriodo !== 'mes')
+        || (!$sinFiltroFecha && $fPeriodo !== $filtros['periodoPorDefecto'])
         || $fDesde || $fHasta;
 @endphp
 
@@ -138,7 +139,7 @@
                 <option value="semana"        {{ $fPeriodo === 'semana'        ? 'selected' : '' }}>Esta semana</option>
 
                 {{-- Mostrar reparaciones del mes actual --}}
-                <option value="mes"           {{ (!$fPeriodo || $fPeriodo === 'mes') ? 'selected' : '' }}>Este mes</option>
+                <option value="mes"           {{ $fPeriodo === 'mes' ? 'selected' : '' }}>Este mes</option>
 
                 {{-- Mostrar reparaciones del mes pasado --}}
                 <option value="mes_pasado"    {{ $fPeriodo === 'mes_pasado'    ? 'selected' : '' }}>Mes pasado</option>

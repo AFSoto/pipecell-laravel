@@ -41,7 +41,7 @@ Si algo falla, la carpeta temporal queda con el log del servidor.
 | --- | --- |
 | `productos.mjs` | Desde 3 letras; Enter desde 2 sin activar «Stock bajo»; red lenta (se cancela el pedido viejo); «Ajustar stock», «Stock bajo», «Editar → Guardar» y «Desactivar» con la búsqueda; la vista con dos pestañas; `aria-live`; sin conexión |
 | `reparaciones.mjs` | La ×; WhatsApp en las filas nuevas; varias palabras y teléfono sin espacios; «Cargar sus cambios» con el modal abierto; un aviso de tiempo real mientras viene la búsqueda; `aria-live`; sesión vencida |
-| `periodo.mjs` | «Últimos 6 meses» desde el select y en la página 2; con búsqueda el indicador nombra el periodo y, sin resultados, sugiere otro; una letra y cambiar el periodo no cuenta como búsqueda; «Personalizado» con las fechas al revés se invierte. Usa solo las reparaciones de hoy: no depende de la fecha |
+| `periodo.mjs` | Al pasar de «En proceso» a «Todos» el periodo arranca en «Últimos 6 meses» (el predefinido); elegir otro y volver, y la página 2; con búsqueda el indicador nombra el periodo y, sin resultados, sugiere otro; una letra y cambiar el periodo no cuenta como búsqueda; «Personalizado» con las fechas al revés se invierte. Usa solo las reparaciones de hoy: no depende de la fecha |
 | `carga-lenta.mjs` | Lo que se escribe antes de que cargue el JS se busca solo al cargar |
 | `rendimiento.mjs` | Con 3.000 reparaciones: una página de hasta 25 filas, menos de 600 KB, y ponerse al día en un solo pedido |
 
