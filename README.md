@@ -148,13 +148,14 @@ MAIL_PASSWORD=
 MAIL_FROM_ADDRESS=noreply@ejemplo.com
 
 # Aviso por WhatsApp (opcional: si están vacías no se envía nada)
+WHATSAPP_API_URL=                  # con Cosend: https://api.cosend.app (vacía: Meta directo)
 WHATSAPP_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_API_VERSION=v26.0
 WHATSAPP_PLANTILLA_LISTA=reparacion_lista
 WHATSAPP_IDIOMA=es
 # Webhook de entrega (opcional: sin ellas no se sabe si el aviso llegó)
-WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_VERIFY_TOKEN=             # solo Meta directo
 WHATSAPP_APP_SECRET=
 ```
 
@@ -162,7 +163,7 @@ WHATSAPP_APP_SECRET=
 
 ---
 
-## Aviso por WhatsApp (Meta Cloud API)
+## Aviso por WhatsApp (Cosend o Meta Cloud API)
 
 Cuando una reparación pasa de **En proceso** a **Arreglado**, la plataforma envía al cliente una plantilla de WhatsApp y muestra el resultado en la fila. No se envía si el cliente no tiene teléfono, si está desmarcado "Tiene WhatsApp" o si el número no es un celular colombiano.
 
@@ -172,13 +173,21 @@ Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" 
 
 "Enviado" (✓) significa que Meta aceptó el mensaje. Con el webhook configurado, la fila pasa a **entregado** (✓✓) o **leído** (✓✓ en azul) al recargar la página, o a **falló** si el número no tiene WhatsApp.
 
-**Costo:** desde el 1 de octubre de 2026 Meta cobra cada aviso de negocio (plantilla *Utility*), unos US$0,0008 por mensaje entregado en Colombia. Para desarrollar, Meta da un número de prueba gratis que envía a hasta 5 números verificados.
+**Costo:** desde el 1 de octubre de 2026 Meta cobra cada aviso de negocio (plantilla *Utility*), unos US$0,0008 por mensaje entregado en Colombia. El plan Free de Cosend es gratis (1.000 mensajes al mes) y no le suma recargo: Meta cobra directo.
 
-**Configuración:**
+### Configuración con Cosend (el mismo número del local)
 
-1. Crear un portafolio en [business.facebook.com](https://business.facebook.com) y una app tipo *Business* en [developers.facebook.com](https://developers.facebook.com) con el producto WhatsApp.
-2. Registrar el número que enviará los avisos y agregar un método de pago en WhatsApp Manager.
-3. Crear la plantilla `reparacion_lista` (categoría **Utility**) y esperar la aprobación:
+[Cosend](https://cosend.app) deja usar el número que el local ya tiene en la app **WhatsApp Business** del celular (la «coexistencia» de Meta, que solo se puede hacer con un proveedor): los chats siguen en el celular y las respuestas de los clientes llegan ahí. La plataforma usa la API de Cosend, que es la misma de Meta en otra dirección.
+
+1. Crear la cuenta en [cosend.app](https://cosend.app), con el plan Free.
+2. Conectar el número del local, en el diálogo de Meta que abre Cosend:
+   - Entrar con Facebook, elegir o crear el portafolio del negocio y poner el número.
+   - En la app **WhatsApp Business** del celular: abrir el mensaje de la cuenta oficial de Facebook Business → "Conectar" → "Conectar a la plataforma". Compartir el historial de chats es opcional (se acepta dentro de 24 horas).
+   - Pegar el código de verificación.
+   - **Requisitos:** la app WhatsApp Business actualizada y el PIN de verificación en dos pasos del número (si nadie lo sabe, se desactiva en WhatsApp Manager).
+   - No hace falta crear una app en developers.facebook.com: Cosend usa la suya.
+3. Agregar un método de pago en Meta (WhatsApp Manager / centro de facturación): Meta cobra cada aviso directo.
+4. Crear la plantilla `reparacion_lista` (categoría **Utility**), en WhatsApp Manager o en Cosend, y esperar la aprobación:
 
    ```text
    Hola {{1}}, le hablamos de PipeCell. Su {{2}} ya está listo, puede pasar a recogerlo cuando guste. ¡Gracias por confiar en nosotros!
@@ -188,14 +197,30 @@ Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" 
    - **Idioma:** "Spanish" (código `es`). Si eliges otro, como "Spanish (MEX)", pon su código en `WHATSAPP_IDIOMA` (ej. `es_MX`).
    - **Tipo de variable:** número (`{{1}}`, `{{2}}`), no con nombre. La plataforma envía los datos en ese orden.
    - **Tienen que ser exactamente 2 variables.** Si la plantilla ya se creó con otra cantidad (antes tenía 3, con el saldo), hay que editarla en WhatsApp Manager: vuelve a revisión. Mientras no coincidan, Meta rechaza cada aviso y la fila dice "La cantidad de datos no coincide con la plantilla aprobada en Meta".
-   - La plataforma no lee las respuestas de los clientes. Conviene agregar al final a qué número escribir o llamar.
-4. Crear un *System User* con un token **permanente** (permiso `whatsapp_business_messaging`) y poner el token y el *Phone Number ID* en el `.env`. El token temporal de la página "API Setup" vence en 24 horas.
-5. Webhook de entrega (opcional, recomendado):
-   1. Inventar una clave larga y ponerla en `WHATSAPP_VERIFY_TOKEN`; copiar el *App Secret* (Configuración de la app → Básica) en `WHATSAPP_APP_SECRET`. Correr `php artisan config:cache`.
-   2. En la app de Meta → WhatsApp → Configuración → Webhook: URL de devolución `https://tudominio.com/webhooks/whatsapp` y como token de verificación la misma clave de `WHATSAPP_VERIFY_TOKEN`.
-   3. Suscribirse al campo `messages`.
+5. En Cosend → **Developer**:
+   - Crear la clave de conexión (`csk_live_…`) y anotar el *Phone number ID* de Meta del número.
+   - Webhook: la URL `https://tudominio.com/webhooks/whatsapp`, en el modo en que **Cosend reenvía** los avisos de Meta (no el directo: ese llega firmado con un secreto que solo tiene Cosend). Copiar el *signing secret*.
+6. En el `.env` (en el servidor, agregar estas líneas sin reemplazar el archivo) y correr `php artisan config:cache`:
 
-   El webhook solo funciona en el servidor (Meta necesita una URL pública con HTTPS). Rechaza toda llamada que no venga firmada con el App Secret.
+   ```env
+   WHATSAPP_API_URL=https://api.cosend.app
+   WHATSAPP_TOKEN=csk_live_...            # la clave de conexión
+   WHATSAPP_PHONE_NUMBER_ID=...           # el Phone number ID de Meta
+   WHATSAPP_APP_SECRET=...                # el signing secret del número
+   ```
+
+7. Abrir WhatsApp Business en el celular al menos cada 14 días: si no, la conexión se corta y la fila dice "El número no está conectado en Cosend". Si se acaban los 1.000 mensajes del mes, dice "Se acabaron los 1.000 mensajes gratis del mes en Cosend".
+
+El webhook solo funciona en el servidor (necesita una URL pública con HTTPS). Rechaza toda llamada que no venga firmada con el secreto (`X-Cosend-Signature-256` de Cosend, o `X-Hub-Signature-256` de Meta).
+
+### Sin proveedor (directo con Meta)
+
+El mismo código funciona directo con Meta, con un número que no esté en la app del celular (Meta no deja registrar un número que está en uso: habría que borrar esa cuenta antes).
+
+1. Crear una app tipo *Business* en [developers.facebook.com](https://developers.facebook.com), con el caso de uso de WhatsApp.
+2. Agregar el número, verificarlo y registrarlo por la API (`POST /{PHONE_NUMBER_ID}/register` con un PIN de 6 dígitos). Agregar un método de pago y crear la plantilla de arriba.
+3. Crear un *System User* con un token que no caduque (permisos `whatsapp_business_messaging` y `whatsapp_business_management`) y ponerlo con el *Phone Number ID* en el `.env`, con `WHATSAPP_API_URL` vacía. El token temporal de "API Setup" vence en 24 horas.
+4. Webhook: inventar una clave larga para `WHATSAPP_VERIFY_TOKEN` y copiar el *App Secret* (Configuración de la app → Básica) en `WHATSAPP_APP_SECRET`. En la app de Meta → Configuración del webhook: la URL de arriba, la misma clave como token de verificación, y suscribirse al campo `messages`. Para que lleguen los estados, la app tiene que estar publicada.
 
 Si algo de la configuración falla, la fila muestra "falló" con el motivo al pasar el cursor por encima.
 

@@ -372,6 +372,61 @@ class NotificacionWhatsappTest extends TestCase
         Http::assertNothingSent();
     }
 
+    // ── Cosend (mismo número del local): la misma API de Meta en otra dirección ──
+
+    public function test_con_cosend_el_aviso_va_a_su_api_con_la_clave_de_conexion(): void
+    {
+        config([
+            'services.whatsapp.api_url' => 'https://api.cosend.app',
+            'services.whatsapp.token'   => 'csk_live_clavedeprueba',
+        ]);
+        Http::fake(['api.cosend.app/*' => Http::response(['messages' => [['id' => 'wamid.COSEND']]])]);
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado')->assertJsonPath('notificacion.estado', 'enviado');
+
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.cosend.app/v26.0/1234567890/messages'
+            && $request->hasHeader('Authorization', 'Bearer csk_live_clavedeprueba')
+            && $request['template']['name'] === 'reparacion_lista');
+        $this->assertSame('wamid.COSEND', $reparacion->ultimoWhatsapp()->first()->mensaje_id);
+    }
+
+    /**
+     * [HTTP, respuesta de Cosend, lo que dice el aviso]. Los errores propios de Cosend vienen en
+     * el formato de Meta, pero con códigos de texto: sin traducir saldrían en inglés.
+     */
+    public static function erroresDeCosend(): array
+    {
+        $cupo = 'No se pudo enviar el WhatsApp: Se acabaron los 1.000 mensajes gratis del mes en Cosend. '
+            . 'Agrega una tarjeta en Cosend o espera al mes siguiente.';
+
+        return [
+            'cupo del mes agotado'    => [402, ['error' => ['message' => 'Monthly allowance reached', 'code' => 'quota_exceeded']], $cupo],
+            '402 sin código conocido' => [402, ['error' => ['message' => 'Payment required']], $cupo],
+            'número desconectado'     => [400, ['error' => ['message' => 'Connection is not routable', 'code' => 'connection_not_routable', 'reason' => 'disconnected']],
+                'No se pudo enviar el WhatsApp: El número no está conectado en Cosend. Abre WhatsApp Business en el celular y revisa la conexión en Cosend.'],
+        ];
+    }
+
+    #[DataProvider('erroresDeCosend')]
+    public function test_los_errores_de_cosend_se_explican_en_espanol(int $http, array $respuesta, string $mensaje): void
+    {
+        config(['services.whatsapp.api_url' => 'https://api.cosend.app']);
+        Http::fake(['api.cosend.app/*' => Http::response($respuesta, $http)]);
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado')
+            ->assertOk()
+            ->assertJsonPath('notificacion.estado', 'fallido')
+            ->assertJsonPath('notificacion.mensaje', $mensaje)
+            // Queda fallido: la fila ofrece «Reintentar» (con el cupo de vuelta o el número conectado)
+            ->assertJsonPath('whatsapp.estado', 'fallido');
+    }
+
     // ── La fila dice si al pasar a «Arreglado» hay que preguntar (data-avisar-a) ──
 
     /**

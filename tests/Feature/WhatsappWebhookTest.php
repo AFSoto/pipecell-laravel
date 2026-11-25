@@ -12,7 +12,9 @@ use Tests\TestCase;
 
 /**
  * Webhook de Meta: confirma si el aviso por WhatsApp llegó, se leyó o no se pudo entregar.
- * Los avisos de prueba se firman igual que los firma Meta (HMAC SHA-256 con el App Secret).
+ * Los avisos de prueba se firman igual que los firma Meta (HMAC SHA-256 con el App Secret,
+ * en X-Hub-Signature-256) o Cosend, que los reenvía en el formato de Meta firmados con el
+ * signing secret del número, en X-Cosend-Signature-256.
  */
 class WhatsappWebhookTest extends TestCase
 {
@@ -20,6 +22,9 @@ class WhatsappWebhookTest extends TestCase
     use CreaDatosDeReparacion;
 
     private const SECRETO = 'secreto-de-prueba';
+
+    private const FIRMA_META   = 'X-Hub-Signature-256';
+    private const FIRMA_COSEND = 'X-Cosend-Signature-256';
 
     /** 2025-11-21 11:00:00 en Colombia */
     private const MOMENTO = 1763740800;
@@ -67,33 +72,47 @@ class WhatsappWebhookTest extends TestCase
         ], $extra);
     }
 
-    /**
-     * Manda al webhook un aviso con la forma que usa Meta. $secreto null = sin firma.
-     */
-    private function enviarEstados(array $estados, ?string $secreto = self::SECRETO, string $campo = 'messages'): TestResponse
+    /** Un cambio de Meta con esos estados: lo que va dentro de entry[].changes[]. */
+    private function cambio(array $estados, string $campo = 'messages'): array
     {
-        $cuerpo = json_encode([
-            'object' => 'whatsapp_business_account',
-            'entry'  => [[
-                'id'      => 'WABA_ID',
-                'changes' => [[
-                    'field' => $campo,
-                    'value' => [
-                        'messaging_product' => 'whatsapp',
-                        'metadata'          => ['phone_number_id' => '1234567890'],
-                        'statuses'          => $estados,
-                    ],
-                ]],
-            ]],
-        ]);
+        return [
+            'field' => $campo,
+            'value' => [
+                'messaging_product' => 'whatsapp',
+                'metadata'          => ['phone_number_id' => '1234567890'],
+                'statuses'          => $estados,
+            ],
+        ];
+    }
 
+    /** El aviso completo, con el sobre que usa Meta (y que conserva Cosend al reenviarlo). */
+    private function cuerpoDeMeta(array $estados, string $campo = 'messages'): string
+    {
+        return json_encode([
+            'object' => 'whatsapp_business_account',
+            'entry'  => [['id' => 'WABA_ID', 'changes' => [$this->cambio($estados, $campo)]]],
+        ]);
+    }
+
+    /** Manda $cuerpo al webhook con esas firmas: [cabecera => secreto]. Sin firmas: sin firma. */
+    private function enviarCuerpo(string $cuerpo, array $firmas): TestResponse
+    {
         $servidor = ['CONTENT_TYPE' => 'application/json'];
 
-        if ($secreto !== null) {
-            $servidor['HTTP_X_HUB_SIGNATURE_256'] = 'sha256=' . hash_hmac('sha256', $cuerpo, $secreto);
+        foreach ($firmas as $cabecera => $secreto) {
+            $servidor['HTTP_' . strtoupper(str_replace('-', '_', $cabecera))] = 'sha256=' . hash_hmac('sha256', $cuerpo, $secreto);
         }
 
         return $this->call('POST', route('webhooks.whatsapp.recibir'), [], [], [], $servidor, $cuerpo);
+    }
+
+    /**
+     * Manda al webhook un aviso con la forma que usa Meta, firmado en $cabecera (la de Meta, o
+     * la de Cosend). $secreto null = sin firma.
+     */
+    private function enviarEstados(array $estados, ?string $secreto = self::SECRETO, string $campo = 'messages', string $cabecera = self::FIRMA_META): TestResponse
+    {
+        return $this->enviarCuerpo($this->cuerpoDeMeta($estados, $campo), $secreto === null ? [] : [$cabecera => $secreto]);
     }
 
     public function test_meta_verifica_la_url_con_el_token_correcto(): void
@@ -200,5 +219,60 @@ class WhatsappWebhookTest extends TestCase
         $respuesta = $this->enviarEstados([$this->estado('delivered')])->assertOk();
 
         $this->assertEmpty($respuesta->headers->getCookies());
+    }
+
+    // ── Cosend: reenvía los avisos de Meta, firmados con el signing secret del número ──
+
+    public function test_acepta_los_avisos_que_reenvia_cosend(): void
+    {
+        $aviso = $this->avisoEnviado();
+
+        $this->enviarEstados([$this->estado('delivered')], cabecera: self::FIRMA_COSEND)->assertOk();
+        $this->enviarEstados([$this->estado('read', self::MOMENTO + 300)], cabecera: self::FIRMA_COSEND)->assertOk();
+
+        $aviso->refresh();
+        $this->assertSame(self::MOMENTO, $aviso->entregado_at->timestamp);
+        $this->assertSame(self::MOMENTO + 300, $aviso->leido_at->timestamp);
+    }
+
+    public function test_rechaza_avisos_de_cosend_sin_firma_valida(): void
+    {
+        $aviso = $this->avisoEnviado();
+
+        $this->enviarEstados([$this->estado('delivered')], secreto: 'otro-secreto', cabecera: self::FIRMA_COSEND)->assertForbidden();
+
+        $this->assertNull($aviso->fresh()->entregado_at);
+    }
+
+    /**
+     * Cosend puede dejar también la firma original de Meta, hecha con el secreto de su propia
+     * app (que la plataforma no tiene): con una firma válida basta.
+     */
+    public function test_con_las_dos_firmas_basta_una_valida(): void
+    {
+        $aviso  = $this->avisoEnviado();
+        $cuerpo = $this->cuerpoDeMeta([$this->estado('delivered')]);
+
+        $this->enviarCuerpo($cuerpo, [self::FIRMA_META => 'secreto-de-la-app-de-cosend', self::FIRMA_COSEND => self::SECRETO])
+            ->assertOk();
+
+        $this->assertSame(self::MOMENTO, $aviso->fresh()->entregado_at->timestamp);
+    }
+
+    /**
+     * Cosend reenvía «un cambio por entrega»: si llega el cambio sin el sobre de Meta (sin
+     * entry), también se lee. Uno que no es de mensajes se ignora, igual que dentro del sobre.
+     */
+    public function test_lee_un_cambio_suelto_sin_el_sobre_de_meta(): void
+    {
+        $aviso = $this->avisoEnviado();
+
+        $this->enviarCuerpo(json_encode($this->cambio([$this->estado('delivered')], 'account_update')), [self::FIRMA_COSEND => self::SECRETO])
+            ->assertOk();
+        $this->assertNull($aviso->fresh()->entregado_at);
+
+        $this->enviarCuerpo(json_encode($this->cambio([$this->estado('delivered')])), [self::FIRMA_COSEND => self::SECRETO])
+            ->assertOk();
+        $this->assertSame(self::MOMENTO, $aviso->fresh()->entregado_at->timestamp);
     }
 }

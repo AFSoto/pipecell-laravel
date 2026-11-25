@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\Http;
  * Solo envía mensajes de plantilla: los avisos que inicia el negocio
  * (como "tu equipo está listo") exigen una plantilla aprobada por Meta.
  *
+ * Sirve igual con Cosend, el proveedor que deja usar el mismo número del local (coexistencia):
+ * su API es la de Meta en otra dirección (WHATSAPP_API_URL=https://api.cosend.app), con su
+ * clave de conexión (csk_live_…) como token.
+ *
  * Configuración en config/services.php → 'whatsapp' (variables WHATSAPP_* del .env).
  */
 class WhatsAppService
@@ -30,6 +34,11 @@ class WhatsAppService
         132000 => 'La cantidad de datos no coincide con la plantilla aprobada en Meta.',
         132001 => 'La plantilla no existe o todavía no está aprobada en Meta.',
         133010 => 'El número de WhatsApp de la plataforma no está registrado en Meta.',
+
+        // Cosend: sus propios rechazos vienen en el formato de Meta, pero con códigos de texto.
+        // La conexión se corta si el celular no abre WhatsApp Business en unos 14 días
+        'connection_not_routable' => 'El número no está conectado en Cosend. Abre WhatsApp Business en el celular y revisa la conexión en Cosend.',
+        'quota_exceeded'          => 'Se acabaron los 1.000 mensajes gratis del mes en Cosend. Agrega una tarjeta en Cosend o espera al mes siguiente.',
     ];
 
     /**
@@ -105,17 +114,23 @@ class WhatsAppService
     }
 
     /**
-     * Texto en español para un código de error de Meta (null si no es uno conocido).
-     * Lo usan el envío y el webhook de estados de entrega.
+     * Texto en español para un código de error de Meta (un número) o de Cosend (un texto), o
+     * null si no es uno conocido. Lo usan el envío y el webhook de estados de entrega.
      */
     public static function mensajePorCodigo(mixed $codigo): ?string
     {
-        return is_numeric($codigo) ? (self::ERRORES_CONOCIDOS[(int) $codigo] ?? null) : null;
+        return match (true) {
+            is_numeric($codigo) => self::ERRORES_CONOCIDOS[(int) $codigo] ?? null,
+            is_string($codigo)  => self::ERRORES_CONOCIDOS[$codigo] ?? null,
+            default             => null,
+        };
     }
 
     private function mensajeDeError(Response $respuesta): string
     {
         return self::mensajePorCodigo($respuesta->json('error.code'))
+            // 402 es el cupo del mes de Cosend, aunque no venga el código
+            ?? ($respuesta->status() === 402 ? self::ERRORES_CONOCIDOS['quota_exceeded'] : null)
             ?? $respuesta->json('error.message')
             ?? "WhatsApp respondió con error HTTP {$respuesta->status()}.";
     }
