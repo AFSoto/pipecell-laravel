@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\EstadoNotificacion;
 use App\Models\Notificacion;
 use App\Models\Reparacion;
 use App\Services\WhatsAppService;
@@ -9,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreaDatosDeReparacion;
 use Tests\TestCase;
 
@@ -43,16 +45,17 @@ class NotificacionWhatsappTest extends TestCase
         Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.PRUEBA']]])]);
     }
 
-    private function cambiarEstado(Reparacion $reparacion, string $estado)
+    /** $extra: lo demás que manda la pantalla, como avisar_whatsapp (lo que se eligió en el modal). */
+    private function cambiarEstado(Reparacion $reparacion, string $estado, array $extra = [])
     {
-        return $this->patchJson(route('admin.reparaciones.actualizarEstado', $reparacion), ['estado' => $estado]);
+        return $this->patchJson(route('admin.reparaciones.actualizarEstado', $reparacion), ['estado' => $estado] + $extra);
     }
 
     public function test_pasar_a_arreglado_envia_la_plantilla_al_cliente(): void
     {
         $this->fakeEnvioExitoso();
         $usuario    = $this->crearUsuario();
-        $reparacion = $this->crearReparacion($usuario); // valor 150.000, abono 50.000
+        $reparacion = $this->crearReparacion($usuario); // Juan Pérez, Samsung A10
 
         $this->actingAs($usuario);
         $this->cambiarEstado($reparacion, 'arreglado')
@@ -70,10 +73,10 @@ class NotificacionWhatsappTest extends TestCase
                 && $request['type'] === 'template'
                 && $request['template']['name'] === 'reparacion_lista'
                 && $request['template']['language']['code'] === 'es'
+                // {{1}} nombre y {{2}} equipo: el mensaje no dice el saldo (decisión del dueño)
                 && $request['template']['components'][0]['parameters'] === [
                     ['type' => 'text', 'text' => 'Juan Pérez'],
                     ['type' => 'text', 'text' => 'Samsung A10'],
-                    ['type' => 'text', 'text' => '$100.000'],
                 ];
         });
 
@@ -265,5 +268,155 @@ class NotificacionWhatsappTest extends TestCase
             ->assertStatus(422);
 
         Http::assertNothingSent();
+    }
+
+    // ── Al pasar a «Arreglado» se puede elegir no avisar (el cliente está en el taller) ──
+
+    public function test_elegir_no_avisar_pasa_a_arreglado_sin_llamar_a_meta(): void
+    {
+        Http::fake();
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado', ['avisar_whatsapp' => false])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            // Sin aviso flotante: lo eligió quien lo marcó. La fila muestra «no enviado» y por qué
+            ->assertJsonPath('notificacion', null)
+            ->assertJsonPath('whatsapp.estado', 'omitido')
+            ->assertJsonPath('whatsapp.mensaje', 'No se envió WhatsApp: se eligió no avisar al pasar a Arreglado.');
+
+        Http::assertNothingSent();
+        $this->assertSame('arreglado', $reparacion->fresh()->estado->value);
+        $this->assertDatabaseHas('notificaciones', [
+            'reparacion_id' => $reparacion->id,
+            'estado'        => 'omitido',
+            'detalle'       => Notificacion::DETALLE_NO_AVISAR,
+            'user_id'       => $usuario->id,
+        ]);
+    }
+
+    /** [lo que manda la pantalla]. Sin el campo es una pantalla con el JS de antes: avisa como siempre. */
+    public static function pedidosQueAvisan(): array
+    {
+        return [
+            'con avisar_whatsapp: true' => [['avisar_whatsapp' => true]],
+            'sin avisar_whatsapp'       => [[]],
+        ];
+    }
+
+    #[DataProvider('pedidosQueAvisan')]
+    public function test_con_la_opcion_marcada_o_sin_el_campo_avisa(array $extra): void
+    {
+        $this->fakeEnvioExitoso();
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado', $extra)
+            ->assertOk()
+            ->assertJsonPath('notificacion.estado', 'enviado');
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_despues_de_no_avisar_el_boton_de_la_fila_si_envia(): void
+    {
+        $this->fakeEnvioExitoso();
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado', ['avisar_whatsapp' => false])
+            ->assertJsonPath('whatsapp.estado', 'omitido');
+
+        // Al final el cliente no vino: se le avisa desde la fila
+        $this->postJson(route('admin.reparaciones.enviarWhatsapp', $reparacion))
+            ->assertOk()
+            ->assertJsonPath('notificacion.estado', 'enviado');
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_no_avisar_cuando_ya_se_habia_avisado_no_guarda_nada(): void
+    {
+        $this->fakeEnvioExitoso();
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado')->assertJsonPath('notificacion.estado', 'enviado');
+        $this->cambiarEstado($reparacion, 'en_proceso');
+        $this->cambiarEstado($reparacion, 'arreglado', ['avisar_whatsapp' => false])
+            ->assertOk()
+            ->assertJsonPath('notificacion', null)
+            ->assertJsonPath('whatsapp.estado', 'enviado');
+
+        Http::assertSentCount(1);
+        $this->assertSame(1, Notificacion::count());
+    }
+
+    public function test_avisar_whatsapp_que_no_es_si_o_no_se_rechaza_y_el_estado_no_cambia(): void
+    {
+        Http::fake();
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario);
+
+        $this->actingAs($usuario);
+        $this->cambiarEstado($reparacion, 'arreglado', ['avisar_whatsapp' => 'quizás'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('avisar_whatsapp');
+
+        $this->assertSame('en_proceso', $reparacion->fresh()->estado->value);
+        Http::assertNothingSent();
+    }
+
+    // ── La fila dice si al pasar a «Arreglado» hay que preguntar (data-avisar-a) ──
+
+    /**
+     * [datos de la reparación, estado del último aviso (null: ninguno), si WhatsApp está
+     * configurado, lo que debe tener data-avisar-a]. Con un celular, la pantalla pregunta si se
+     * avisa; vacío, pasa directo: no se avisaría (la misma regla del envío).
+     */
+    public static function avisarA(): array
+    {
+        return [
+            'celular'                   => [['telefono_cliente' => '310 123 4567'],     null,      true,  '310 123 4567'],
+            'celular con +57 y guiones' => [['telefono_cliente' => '+57 310-123-4567'], null,      true,  '310 123 4567'],
+            'sin teléfono'              => [['telefono_cliente' => null],               null,      true,  ''],
+            'sin WhatsApp'              => [['tiene_whatsapp' => false],                null,      true,  ''],
+            'fijo'                      => [['telefono_cliente' => '601 234 5678'],     null,      true,  ''],
+            'WhatsApp sin configurar'   => [[],                                         null,      false, ''],
+            'ya se le avisó'            => [[],                                         'enviado', true,  ''],
+            'se eligió no avisar'       => [[],                                         'omitido', true,  '310 123 4567'],
+            'el aviso anterior falló'   => [[],                                         'fallido', true,  '310 123 4567'],
+        ];
+    }
+
+    #[DataProvider('avisarA')]
+    public function test_la_fila_dice_a_que_celular_se_avisaria(array $datos, ?string $ultimoAviso, bool $configurado, string $esperado): void
+    {
+        if (! $configurado) {
+            config(['services.whatsapp.token' => null]);
+        }
+        $usuario    = $this->crearUsuario();
+        $reparacion = $this->crearReparacion($usuario, $datos);
+
+        if ($ultimoAviso) {
+            Notificacion::create([
+                'reparacion_id' => $reparacion->id,
+                'canal'         => Notificacion::CANAL_WHATSAPP,
+                'tipo'          => Notificacion::TIPO_REPARACION_LISTA,
+                'telefono'      => $reparacion->telefono_cliente,
+                'estado'        => EstadoNotificacion::from($ultimoAviso),
+            ]);
+        }
+
+        $html = $this->actingAs($usuario)->get(route('admin.reparaciones.index'))->assertOk()->getContent();
+
+        $this->assertSame(1, preg_match('#data-id="' . $reparacion->id . '"[^>]*?data-avisar-a="([^"]*)"#', $html, $avisarA),
+            'La fila no tiene data-avisar-a');
+        $this->assertSame($esperado, html_entity_decode($avisarA[1]));
     }
 }

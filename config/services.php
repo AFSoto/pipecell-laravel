@@ -55,6 +55,8 @@ return [
         'token'           => env('WHATSAPP_TOKEN'),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
         'api_version'     => env('WHATSAPP_API_VERSION', 'v26.0'),
+        // Solo cambia en las pruebas del navegador (tests/e2e), que usan un Meta falso
+        'api_url'         => env('WHATSAPP_API_URL', 'https://graph.facebook.com'),
         'plantilla_lista' => env('WHATSAPP_PLANTILLA_LISTA', 'reparacion_lista'),
         'idioma'          => env('WHATSAPP_IDIOMA', 'es'),
 

@@ -53,7 +53,8 @@ class WhatsAppService
     public function enviarPlantilla(string $telefono, string $plantilla, string $idioma, array $parametros): string
     {
         $url = sprintf(
-            'https://graph.facebook.com/%s/%s/messages',
+            '%s/%s/%s/messages',
+            rtrim(config('services.whatsapp.api_url') ?: 'https://graph.facebook.com', '/'),
             config('services.whatsapp.api_version'),
             config('services.whatsapp.phone_number_id')
         );

@@ -18,11 +18,17 @@
         default              => 'hover:bg-gray-50/50',
     };
     $display = $rep->repuestos->first();
+
+    // Al pasar a «Arreglado», a qué celular se le avisaría por WhatsApp: con uno, la pantalla
+    // pregunta antes si se avisa (modal-arreglado). Vacío: no se avisaría y pasa directo.
+    // Misma regla que el envío (NotificacionService::celularParaAviso)
+    $avisarA = app(\App\Services\NotificacionService::class)->celularParaAviso($rep);
 @endphp
 <tr class="transition reparacion-row {{ $filaClase }}"
 
     data-id="{{ $rep->id }}"
     data-estado="{{ $rep->estado->value }}"
+    data-avisar-a="{{ $avisarA }}"
     data-whatsapp="{{ $rep->ultimoWhatsapp ? json_encode($rep->ultimoWhatsapp->paraVista()) : '' }}"
     data-edit="{{ json_encode($rep->datosEdicion()) }}">
 

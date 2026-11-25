@@ -720,6 +720,55 @@
     </div>
 </div>
 
+{{-- ============================== --}}
+{{-- MODAL - Pasar a Arreglado        --}}
+{{-- ============================== --}}
+{{-- Sale al pasar de «En proceso» a «Arreglado» cuando al cliente se le avisaría por WhatsApp
+     (data-avisar-a de la fila). Trae marcado el aviso; si se quita (por ejemplo, el cliente
+     está en el taller), el estado cambia igual y no se le escribe. Ver abrirModalArreglado().
+     No usa SweetAlert: va en el camino del cambio de estado, y si el CDN no carga no puede
+     romper el select. --}}
+<div id="modal-arreglado" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="arreglado-titulo">
+    <div class="absolute inset-0 bg-black/50" onclick="cancelarArreglado()"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900" id="arreglado-titulo">Pasar a Arreglado</h3>
+                <p class="text-sm text-gray-500" id="arreglado-cliente"></p>
+            </div>
+            <button type="button" onclick="cancelarArreglado()" aria-label="Cerrar"
+                    class="p-2 rounded-xl hover:bg-gray-100 transition">
+                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            {{-- Toda la caja se puede tocar (es el label): en el iPad la casilla sola es chica --}}
+            <label for="arreglado-avisar"
+                   class="flex items-start gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition">
+                <input type="checkbox" id="arreglado-avisar" class="mt-0.5 w-5 h-5 accent-green-600 cursor-pointer">
+                <span>
+                    <span class="block text-sm font-medium text-gray-900">Enviar mensaje por WhatsApp</span>
+                    <span class="block text-sm text-gray-500">Al <span id="arreglado-telefono"></span>, para avisarle que ya está listo</span>
+                </span>
+            </label>
+            <p class="text-xs text-gray-400">Quítala si el cliente está en el taller: el estado cambia igual y no se le escribe.</p>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" id="arreglado-cancelar" onclick="cancelarArreglado()"
+                        class="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition">
+                    Cancelar
+                </button>
+                <button type="button" id="arreglado-confirmar" onclick="confirmarArreglado()"
+                        class="px-5 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl transition shadow-sm shadow-green-600/20">
+                    Pasar a Arreglado
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('scripts')
@@ -1083,10 +1132,35 @@ function actualizarFilaEdicion(datos) {
 // ══════════════════════════════════════
     // CAMBIAR ESTADO (AJAX sin recargar)
     // ══════════════════════════════════════
+    /**
+     * El select de estado de la fila. De «En proceso» a «Arreglado», si al cliente se le
+     * avisaría por WhatsApp (data-avisar-a, lo pone el servidor), primero pregunta si se le
+     * avisa (modal-arreglado). Si no, guarda directo.
+     */
     function cambiarEstado(select, reparacionId) {
-        const nuevoEstado = select.value;
         const fila = select.closest('tr');
+
+        if (fila.dataset.estado === 'en_proceso' && select.value === 'arreglado' && fila.dataset.avisarA) {
+            abrirModalArreglado(select, reparacionId);
+            return;
+        }
+
+        guardarEstado(select, reparacionId, select.value);
+    }
+
+    /**
+     * Guarda el estado. avisar: lo que se eligió en el modal al pasar a «Arreglado» (true o
+     * false). Sin modal no se manda, y el servidor avisa si corresponde, como siempre.
+     */
+    function guardarEstado(select, reparacionId, nuevoEstado, avisar) {
+        // Con el modal abierto, el tiempo real pudo reemplazar la fila: se usa la de ahora
+        const fila = filaDe(reparacionId) || select.closest('tr');
+        select = fila.querySelector('select') || select;
+        select.value = nuevoEstado;
+
         const estadoAnterior = fila.dataset.estado;
+        const cuerpo = { estado: nuevoEstado };
+        if (avisar !== undefined) cuerpo.avisar_whatsapp = avisar;
 
         // Feedback visual inmediato: borde verde en el select
         select.classList.add('ring-2', 'ring-green-400');
@@ -1099,7 +1173,7 @@ function actualizarFilaEdicion(datos) {
                 'Accept': 'application/json',
                 ...cabecerasEnVivo(),
             },
-            body: JSON.stringify({ estado: nuevoEstado })
+            body: JSON.stringify(cuerpo)
         })
         .then(res => res.json())
         .then(data => {
@@ -1114,8 +1188,11 @@ function actualizarFilaEdicion(datos) {
                 // Actualizar contadores sin recargar
                 actualizarContadores(estadoAnterior, nuevoEstado);
 
-                // Mostrar notificación flotante
-                mostrarNotificacion('Estado actualizado correctamente');
+                // Mostrar notificación flotante. Si se eligió no avisar, se dice aquí: el
+                // servidor no manda aviso de WhatsApp (lo decidió quien lo marcó)
+                mostrarNotificacion(avisar === false
+                    ? 'Estado actualizado. No se avisó por WhatsApp.'
+                    : 'Estado actualizado correctamente');
 
                 // Aviso por WhatsApp: el intento nuevo solo viene al pasar de "En proceso"
                 // a "Arreglado"; el estado actual viene siempre, y con el nuevo estado de
@@ -1160,6 +1237,72 @@ function actualizarFilaEdicion(datos) {
             select.value = estadoAnterior;
             mostrarNotificacion('Error de conexión', 'error');
         });
+    }
+
+    // ══════════════════════════════════════
+    // PASAR A ARREGLADO: ¿SE LE AVISA POR WHATSAPP?
+    // ══════════════════════════════════════
+    // La reparación que espera la respuesta del modal: { id, select, estadoAnterior }. El modal
+    // no se queda con la fila: el tiempo real puede reemplazarla mientras está abierto, y al
+    // cerrarlo se busca la de ahora con filaDe(id).
+    let arregladoPendiente = null;
+
+    function abrirModalArreglado(select, reparacionId) {
+        const fila   = select.closest('tr');
+        const nombre = fila.querySelector('[data-campo="nombre"]').textContent.trim();
+        const equipo = ['marca', 'modelo']
+            .map(campo => fila.querySelector(`[data-campo="${campo}"]`)?.textContent.trim())
+            .filter(texto => texto && texto !== '—')
+            .join(' ');
+
+        arregladoPendiente = { id: reparacionId, select, estadoAnterior: fila.dataset.estado };
+
+        // textContent (no innerHTML): son datos escritos por el usuario. El celular viene del
+        // servidor ya revisado (solo números y espacios)
+        document.getElementById('arreglado-cliente').textContent  = equipo ? `${nombre} · ${equipo}` : nombre;
+        document.getElementById('arreglado-telefono').textContent = fila.dataset.avisarA;
+        document.getElementById('arreglado-avisar').checked       = true;
+
+        document.getElementById('modal-arreglado').classList.remove('hidden');
+        document.addEventListener('keydown', cancelarArregladoConEscape);
+        document.getElementById('arreglado-confirmar').focus();
+    }
+
+    /** Cierra el modal y devuelve lo que esperaba respuesta (null si ya estaba cerrado). */
+    function cerrarModalArreglado() {
+        const pendiente = arregladoPendiente;
+
+        arregladoPendiente = null;
+        document.getElementById('modal-arreglado').classList.add('hidden');
+        document.removeEventListener('keydown', cancelarArregladoConEscape);
+
+        return pendiente;
+    }
+
+    /**
+     * Cancelar, la ×, tocar afuera o Escape: no se guarda nada y el select vuelve al estado de
+     * la fila (si otra persona la cambió mientras tanto, al de ahora).
+     */
+    function cancelarArreglado() {
+        const pendiente = cerrarModalArreglado();
+        if (!pendiente) return;
+
+        const fila   = filaDe(pendiente.id);
+        const select = fila?.querySelector('select') || pendiente.select;
+        select.value = fila?.dataset.estado || pendiente.estadoAnterior;
+    }
+
+    /** «Pasar a Arreglado»: guarda, y avisa al cliente solo si la opción quedó marcada. */
+    function confirmarArreglado() {
+        const avisar    = document.getElementById('arreglado-avisar').checked;
+        const pendiente = cerrarModalArreglado();
+        if (!pendiente) return;
+
+        guardarEstado(pendiente.select, pendiente.id, 'arreglado', avisar);
+    }
+
+    function cancelarArregladoConEscape(evento) {
+        if (evento.key === 'Escape') cancelarArreglado();
     }
 
     /**
@@ -1336,7 +1479,9 @@ function actualizarFilaEdicion(datos) {
             const boton = document.createElement('button');
             boton.type = 'button';
             boton.className = 'block mt-1 text-[11px] font-semibold text-green-600 hover:text-green-800 transition';
-            boton.textContent = aviso ? 'Reintentar WhatsApp' : 'Enviar WhatsApp';
+            // «Reintentar» solo después de un fallo. Si no se envió (omitido: por ejemplo, se
+            // eligió no avisar al pasar a Arreglado), todavía no se intentó
+            boton.textContent = aviso?.estado === 'fallido' ? 'Reintentar WhatsApp' : 'Enviar WhatsApp';
             boton.addEventListener('click', () => enviarWhatsapp(fila, boton));
             contenedor.appendChild(boton);
         }

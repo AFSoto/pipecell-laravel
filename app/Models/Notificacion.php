@@ -27,6 +27,12 @@ class Notificacion extends Model
     /** Detalle de un intento que falló por un error de la plataforma (no de Meta). */
     public const DETALLE_ERROR_INTERNO = 'error interno de la plataforma. Intenta de nuevo.';
 
+    /**
+     * Detalle de un aviso que no se envió porque quien pasó la reparación a «Arreglado» quitó
+     * la opción (por ejemplo, el cliente estaba en el taller). Se puede enviar después.
+     */
+    public const DETALLE_NO_AVISAR = 'se eligió no avisar al pasar a Arreglado.';
+
     protected $fillable = [
         'reparacion_id',
         'user_id',

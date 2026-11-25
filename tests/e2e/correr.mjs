@@ -1,14 +1,15 @@
-// Pruebas de navegador de la búsqueda en vivo (Productos y Reparaciones) y del filtro de periodo,
-// en WebKit (el motor de Safari, el del iPad) y en Chromium, contra la app con una base SQLite
-// temporal: nunca toca MySQL. Ver README.md.
+// Pruebas de navegador de la búsqueda en vivo (Productos y Reparaciones), del filtro de periodo y
+// del aviso por WhatsApp, en WebKit (el motor de Safari, el del iPad) y en Chromium, contra la app
+// con una base SQLite temporal: nunca toca MySQL ni Meta. Ver README.md.
 //
 //   npm run e2e                          todas, en WebKit y Chromium
 //   npm run e2e -- --motor webkit        un solo motor
-//   npm run e2e -- --solo reparaciones   una sola prueba (productos, reparaciones, periodo o carga-lenta)
+//   npm run e2e -- --solo reparaciones   una sola prueba (productos, reparaciones, periodo, carga-lenta o whatsapp)
 //   npm run e2e -- --capturas <carpeta>  además guarda capturas
 //   npm run e2e:rendimiento              3.000 reparaciones: lo que pesa y tarda una búsqueda
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, openSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +20,7 @@ import * as reparaciones from './reparaciones.mjs';
 import * as periodo from './periodo.mjs';
 import * as cargaLenta from './carga-lenta.mjs';
 import * as rendimiento from './rendimiento.mjs';
+import * as whatsapp from './whatsapp.mjs';
 
 const RAIZ    = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const MOTORES = { webkit, chromium };
@@ -34,7 +36,8 @@ const opcion      = nombre => { const i = args.indexOf(nombre); return i === -1 
 const esRendimiento = args.includes('--rendimiento');
 const motores     = opcion('--motor') ? [opcion('--motor')] : (esRendimiento ? ['webkit'] : ['webkit', 'chromium']);
 const capturas    = opcion('--capturas') ? resolve(opcion('--capturas')) : null;
-const TODAS       = { productos, reparaciones, periodo, 'carga-lenta': cargaLenta };
+// whatsapp va al final: pasa reparaciones a «Arreglado»
+const TODAS       = { productos, reparaciones, periodo, 'carga-lenta': cargaLenta, whatsapp };
 const solo        = opcion('--solo');
 const suites      = esRendimiento ? [rendimiento] : (solo ? [TODAS[solo]] : Object.values(TODAS));
 
@@ -56,12 +59,41 @@ if (capturas) mkdirSync(capturas, { recursive: true });
 // La base, el log del servidor y los perfiles del navegador van aquí (se borra si todo sale bien)
 const temporal = mkdtempSync(join(tmpdir(), 'pipecell-e2e-'));
 
-/** El entorno de la app de prueba: base SQLite temporal, sesión en cookie y nada hacia afuera. */
+/**
+ * Un Meta falso para el aviso por WhatsApp: responde como la API de WhatsApp (con el id del
+ * mensaje) y guarda cada pedido, así las pruebas saben si se envió y con qué. Nada sale a
+ * Internet. Las reparaciones de la base no tienen WhatsApp: solo envía la prueba que lo activa.
+ */
+async function levantarMetaFalso() {
+    const pedidos  = [];
+    const servidor = createServer((pedido, respuesta) => {
+        let cuerpo = '';
+        pedido.on('data', parte => { cuerpo += parte; });
+        pedido.on('end', () => {
+            let datos = null;
+            try { datos = JSON.parse(cuerpo); } catch { /* no era JSON */ }
+            pedidos.push({ ruta: pedido.url, token: pedido.headers.authorization, datos });
+            respuesta.writeHead(200, { 'Content-Type': 'application/json' });
+            respuesta.end(JSON.stringify({ messaging_product: 'whatsapp', messages: [{ id: `wamid.e2e.${pedidos.length}` }] }));
+        });
+    });
+    await new Promise(listo => servidor.listen(0, '127.0.0.1', listo));
+
+    return { url: `http://127.0.0.1:${servidor.address().port}`, pedidos, cerrar: () => servidor.close() };
+}
+
+const meta = await levantarMetaFalso();
+
+/**
+ * El entorno de la app de prueba: base SQLite temporal, sesión en cookie y nada hacia afuera.
+ * WhatsApp queda configurado, pero contra el Meta falso.
+ */
 const entornoPara = base => ({
     ...process.env,
     APP_ENV: 'local', APP_DEBUG: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: base,
     SESSION_DRIVER: 'cookie', CACHE_STORE: 'array', QUEUE_CONNECTION: 'sync', BROADCAST_CONNECTION: 'null',
-    MAIL_MAILER: 'array', WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '', LOG_CHANNEL: 'stderr',
+    MAIL_MAILER: 'array', LOG_CHANNEL: 'stderr',
+    WHATSAPP_TOKEN: 'e2e', WHATSAPP_PHONE_NUMBER_ID: 'e2e', WHATSAPP_API_URL: meta.url,
 });
 
 function prepararBase(base, tamano) {
@@ -109,7 +141,7 @@ for (const motor of motores) {
         for (const suite of suites) {
             console.log(`\n── ${suite.titulo} · ${motor} ──`);
             try {
-                await suite.correr({ navegador, app, revisar: revisor.revisar, cambiar, capturas, motor });
+                await suite.correr({ navegador, app, revisar: revisor.revisar, cambiar, capturas, motor, meta });
             } catch (error) {
                 revisor.revisar(false, `${suite.titulo}: la prueba se cortó`, error.message.split('\n')[0]);
             }
@@ -121,6 +153,8 @@ for (const motor of motores) {
 
     fallos += revisor.fallos();
 }
+
+meta.cerrar();
 
 if (fallos) {
     console.log(`\n${fallos} revisión(es) fallaron. El log del servidor quedó en ${temporal}`);

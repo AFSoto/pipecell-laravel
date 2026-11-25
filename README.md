@@ -166,6 +166,8 @@ WHATSAPP_APP_SECRET=
 
 Cuando una reparación pasa de **En proceso** a **Arreglado**, la plataforma envía al cliente una plantilla de WhatsApp y muestra el resultado en la fila. No se envía si el cliente no tiene teléfono, si está desmarcado "Tiene WhatsApp" o si el número no es un celular colombiano.
 
+Antes de enviarlo, pregunta: sale un modal con el celular del cliente y la opción **"Enviar mensaje por WhatsApp"** marcada. Si se quita (por ejemplo, el cliente está en el taller), la reparación pasa a "Arreglado" igual, no se le escribe y la fila muestra "WhatsApp no enviado" con el botón **"Enviar WhatsApp"**, por si al final hay que avisarle. El modal solo sale cuando de verdad se enviaría: si no hay a quién avisar, o WhatsApp no está configurado, la reparación pasa directo.
+
 Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" y otra vez a "Arreglado", o dos personas pulsen el botón al mismo tiempo, no se repite. Solo se puede reintentar si el envío falló o si Meta avisó que no lo pudo entregar.
 
 "Enviado" (✓) significa que Meta aceptó el mensaje. Con el webhook configurado, la fila pasa a **entregado** (✓✓) o **leído** (✓✓ en azul) al recargar la página, o a **falló** si el número no tiene WhatsApp.
@@ -179,12 +181,14 @@ Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" 
 3. Crear la plantilla `reparacion_lista` (categoría **Utility**) y esperar la aprobación:
 
    ```text
-   Hola {{1}}, tu {{2}} ya está listo para recoger en PipeCell. Saldo pendiente: {{3}}. ¡Te esperamos!
+   Hola {{1}}, le hablamos de PipeCell. Su {{2}} ya está listo, puede pasar a recogerlo cuando guste. ¡Gracias por confiar en nosotros!
    ```
 
-   `{{1}}` = nombre del cliente, `{{2}}` = marca y modelo, `{{3}}` = saldo pendiente (ej. `$50.000`).
+   `{{1}}` = nombre del cliente y `{{2}}` = marca y modelo. Meta pide un ejemplo de cada una: `Juan` y `Samsung A10`. El mensaje no dice el saldo.
    - **Idioma:** "Spanish" (código `es`). Si eliges otro, como "Spanish (MEX)", pon su código en `WHATSAPP_IDIOMA` (ej. `es_MX`).
-   - **Tipo de variable:** número (`{{1}}`, `{{2}}`, `{{3}}`), no con nombre. La plataforma envía los datos en ese orden.
+   - **Tipo de variable:** número (`{{1}}`, `{{2}}`), no con nombre. La plataforma envía los datos en ese orden.
+   - **Tienen que ser exactamente 2 variables.** Si la plantilla ya se creó con otra cantidad (antes tenía 3, con el saldo), hay que editarla en WhatsApp Manager: vuelve a revisión. Mientras no coincidan, Meta rechaza cada aviso y la fila dice "La cantidad de datos no coincide con la plantilla aprobada en Meta".
+   - La plataforma no lee las respuestas de los clientes. Conviene agregar al final a qué número escribir o llamar.
 4. Crear un *System User* con un token **permanente** (permiso `whatsapp_business_messaging`) y poner el token y el *Phone Number ID* en el `.env`. El token temporal de la página "API Setup" vence en 24 horas.
 5. Webhook de entrega (opcional, recomendado):
    1. Inventar una clave larga y ponerla en `WHATSAPP_VERIFY_TOKEN`; copiar el *App Secret* (Configuración de la app → Básica) en `WHATSAPP_APP_SECRET`. Correr `php artisan config:cache`.

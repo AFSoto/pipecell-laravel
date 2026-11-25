@@ -37,15 +37,23 @@ class NotificacionService
      * espera a que termine la primera y encuentra el aviso enviado. El bloqueo dura
      * lo que tarde Meta en responder (máximo 10 s).
      *
+     * Con $avisar en false (quien la pasó a «Arreglado» quitó la opción del modal, por
+     * ejemplo porque el cliente estaba en el taller) no se llama a Meta: queda «omitido»
+     * con ese motivo, y el botón de la fila lo puede enviar después.
+     *
      * @return Notificacion|null  null si ya se había avisado
      */
-    public function notificarReparacionLista(Reparacion $reparacion, ?int $userId = null): ?Notificacion
+    public function notificarReparacionLista(Reparacion $reparacion, ?int $userId = null, bool $avisar = true): ?Notificacion
     {
-        return DB::transaction(function () use ($reparacion, $userId) {
+        return DB::transaction(function () use ($reparacion, $userId, $avisar) {
             $reparacion = Reparacion::lockForUpdate()->findOrFail($reparacion->id);
 
             if ($this->yaSeAviso($reparacion)) {
                 return null;
+            }
+
+            if (! $avisar) {
+                return $this->registrar($this->datosDelIntento($reparacion, $userId), EstadoNotificacion::Omitido, Notificacion::DETALLE_NO_AVISAR);
             }
 
             return $this->intentarEnvio($reparacion, $userId);
@@ -53,35 +61,65 @@ class NotificacionService
     }
 
     /**
-     * Un intento de envío: queda registrado como enviado, fallido u omitido.
+     * Por qué no se le puede avisar al cliente por WhatsApp, o null si sí se puede. Es la
+     * única regla: la usan el envío (el motivo queda en el «omitido») y la fila, que solo
+     * pregunta si se avisa cuando de verdad se enviaría (celularParaAviso()).
      */
-    private function intentarEnvio(Reparacion $reparacion, ?int $userId): Notificacion
+    public function motivoSinAviso(Reparacion $reparacion): ?string
     {
-        $base = [
+        return match (true) {
+            blank($reparacion->telefono_cliente)                             => 'el cliente no tiene teléfono registrado.',
+            ! $reparacion->tiene_whatsapp                                    => 'el cliente no tiene WhatsApp.',
+            self::normalizarTelefono($reparacion->telefono_cliente) === null => 'el teléfono no es un celular colombiano válido.',
+            ! $this->whatsApp->estaConfigurado()                             => 'WhatsApp no está configurado en la plataforma.',
+            default                                                          => null,
+        };
+    }
+
+    /**
+     * El celular al que se le avisaría al pasar a «Arreglado» ("310 123 4567"), o null si no
+     * se le avisaría: hay un motivo (motivoSinAviso) o el último aviso ya salió, y nunca se
+     * manda dos veces. Lo muestra el modal que pregunta si se avisa (data-avisar-a de la fila).
+     *
+     * Sale de los dígitos ya revisados, no del teléfono como se escribió: solo trae números y
+     * espacios. Usa ultimoWhatsapp, que la lista ya trae cargado.
+     */
+    public function celularParaAviso(Reparacion $reparacion): ?string
+    {
+        if ($this->motivoSinAviso($reparacion) !== null
+            || $reparacion->ultimoWhatsapp?->estado === EstadoNotificacion::Enviado) {
+            return null;
+        }
+
+        $celular = substr(self::normalizarTelefono($reparacion->telefono_cliente), 2);   // sin el 57
+
+        return substr($celular, 0, 3) . ' ' . substr($celular, 3, 3) . ' ' . substr($celular, 6);
+    }
+
+    /** Lo que tiene todo intento de aviso de «reparación lista». */
+    private function datosDelIntento(Reparacion $reparacion, ?int $userId): array
+    {
+        return [
             'reparacion_id' => $reparacion->id,
             'user_id'       => $userId,
             'canal'         => Notificacion::CANAL_WHATSAPP,
             'tipo'          => Notificacion::TIPO_REPARACION_LISTA,
             'telefono'      => $reparacion->telefono_cliente,
         ];
+    }
 
-        if (blank($reparacion->telefono_cliente)) {
-            return $this->registrar($base, EstadoNotificacion::Omitido, 'el cliente no tiene teléfono registrado.');
-        }
+    /**
+     * Un intento de envío: queda registrado como enviado, fallido u omitido.
+     */
+    private function intentarEnvio(Reparacion $reparacion, ?int $userId): Notificacion
+    {
+        $base = $this->datosDelIntento($reparacion, $userId);
 
-        if (! $reparacion->tiene_whatsapp) {
-            return $this->registrar($base, EstadoNotificacion::Omitido, 'el cliente no tiene WhatsApp.');
+        if (($motivo = $this->motivoSinAviso($reparacion)) !== null) {
+            return $this->registrar($base, EstadoNotificacion::Omitido, $motivo);
         }
 
         $telefono = self::normalizarTelefono($reparacion->telefono_cliente);
-
-        if ($telefono === null) {
-            return $this->registrar($base, EstadoNotificacion::Omitido, 'el teléfono no es un celular colombiano válido.');
-        }
-
-        if (! $this->whatsApp->estaConfigurado()) {
-            return $this->registrar($base, EstadoNotificacion::Omitido, 'WhatsApp no está configurado en la plataforma.');
-        }
 
         try {
             $mensajeId = $this->whatsApp->enviarPlantilla(
@@ -195,15 +233,16 @@ class NotificacionService
     }
 
     /**
-     * Valores de la plantilla "reparacion_lista", en orden:
-     * {{1}} nombre del cliente, {{2}} equipo (marca + modelo), {{3}} saldo pendiente.
+     * Valores de la plantilla "reparacion_lista", en orden: {{1}} nombre del cliente y
+     * {{2}} equipo (marca + modelo). El mensaje no dice el saldo (decisión del dueño).
+     * La plantilla aprobada en Meta tiene que tener estas 2 variables: si no, Meta rechaza
+     * el envío (error 132000, que la fila muestra en español).
      */
     private function parametrosPlantilla(Reparacion $reparacion): array
     {
         $equipo = trim($reparacion->marca . ' ' . ($reparacion->modelo ?? ''));
-        $saldo  = '$' . number_format(max(0, (float) $reparacion->saldo_pendiente), 0, ',', '.');
 
-        return [$reparacion->nombre_cliente, $equipo, $saldo];
+        return [$reparacion->nombre_cliente, $equipo];
     }
 
     private function yaSeAviso(Reparacion $reparacion): bool

@@ -232,9 +232,13 @@ class ReparacionController extends Controller
     public function actualizarEstado(Request $request, Reparacion $reparacion)
     {
         $request->validate([
-            'estado' => ['required', 'in:en_proceso,arreglado,entregado'],
+            'estado'          => ['required', 'in:en_proceso,arreglado,entregado'],
+            // Lo que se eligió en el modal al pasar a «Arreglado» (avisar o no al cliente). Sin
+            // el campo se avisa, como siempre: una pantalla abierta desde antes no lo manda
+            'avisar_whatsapp' => ['sometimes', 'boolean'],
         ]);
 
+        $avisar         = $request->boolean('avisar_whatsapp', true);
         $estadoAnterior = $reparacion->estado;
 
         try {
@@ -254,7 +258,13 @@ class ReparacionController extends Controller
         $notificacion = null;
 
         if ($estadoAnterior === EstadoReparacion::EnProceso && $reparacion->estado === EstadoReparacion::Arreglado) {
-            $notificacion = $this->avisarReparacionLista($reparacion, $request->user()->id);
+            $notificacion = $this->avisarReparacionLista($reparacion, $request->user()->id, $avisar);
+
+            // Si se eligió no avisar no hay aviso flotante: lo decidió quien lo marcó. La fila
+            // igual muestra «WhatsApp no enviado» y por qué (viene en 'whatsapp')
+            if (! $avisar) {
+                $notificacion = null;
+            }
         }
 
         return response()->json([
@@ -376,14 +386,15 @@ class ReparacionController extends Controller
     }
 
     /**
-     * Envía el aviso y devuelve los datos para la vista. Nunca lanza excepción:
-     * un problema con WhatsApp no debe dañar el cambio de estado que ya se guardó.
+     * Envía el aviso (o, con $avisar en false, deja anotado que se eligió no avisar) y
+     * devuelve los datos para la vista. Nunca lanza excepción: un problema con WhatsApp no
+     * debe dañar el cambio de estado que ya se guardó.
      */
-    private function avisarReparacionLista(Reparacion $reparacion, int $userId): ?array
+    private function avisarReparacionLista(Reparacion $reparacion, int $userId, bool $avisar = true): ?array
     {
         try {
             return $this->notificacionService
-                ->notificarReparacionLista($reparacion, $userId)
+                ->notificarReparacionLista($reparacion, $userId, $avisar)
                 ?->paraVista();
         } catch (\Throwable $e) {
             // Los errores al enviar ya quedan guardados como "fallido" en el servicio;
