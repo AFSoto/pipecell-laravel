@@ -15,7 +15,7 @@ Sistema web completo para la administración de talleres de reparación de celul
 - Registro de abonos parciales con control de saldo pendiente
 - Bloqueo: no se puede marcar como entregada una reparación con saldo pendiente
 - Edición de datos desde modal inline
-- Registro del **display usado** al crear o editar: se descuenta del inventario (1 por defecto, cantidad editable) y queda el movimiento de stock. No cambia el costo de "Repuestos": el valor total ya incluye repuestos y mano de obra
+- Registro del **display usado** al crear o editar: se descuenta del inventario (1 por defecto, cantidad editable) y queda el movimiento de stock. Se elige con un buscador en el mismo campo (marca, modelo, tipo o marco), que muestra el stock de cada uno y distingue dos del mismo nombre (con o sin marco). No cambia el costo de "Repuestos": el valor total ya incluye repuestos y mano de obra
 - **Aviso automático por WhatsApp** al cliente cuando la reparación pasa a "Arreglado", una sola vez, con indicador en la fila (enviado / entregado / leído / falló / no enviado) y botón para reintentar si falló
 - **Tiempo real** (Pusher): lo que hace otra persona aparece solo en las demás pantallas (estado, cobros, datos, WhatsApp, contadores y cajas libres), y guardar una edición nunca pisa los cambios de otro sin avisar
 - Alertas visuales para reparaciones con más de 8 y 15 días en proceso
@@ -179,12 +179,14 @@ Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" 
 
 [Cosend](https://cosend.app) deja usar el número que el local ya tiene en la app **WhatsApp Business** del celular (la «coexistencia» de Meta, que solo se puede hacer con un proveedor): los chats siguen en el celular y las respuestas de los clientes llegan ahí. La plataforma usa la API de Cosend, que es la misma de Meta en otra dirección.
 
-1. Crear la cuenta en [cosend.app](https://cosend.app), con el plan Free.
-2. Conectar el número del local, en el diálogo de Meta que abre Cosend:
-   - Entrar con Facebook, elegir o crear el portafolio del negocio y poner el número.
-   - En la app **WhatsApp Business** del celular: abrir el mensaje de la cuenta oficial de Facebook Business → "Conectar" → "Conectar a la plataforma". Compartir el historial de chats es opcional (se acepta dentro de 24 horas).
-   - Pegar el código de verificación.
-   - **Requisitos:** la app WhatsApp Business actualizada y el PIN de verificación en dos pasos del número (si nadie lo sabe, se desactiva en WhatsApp Manager).
+1. Crear la cuenta en [cosend.app](https://cosend.app). Queda en el plan Free (en Configuración → Facturación y plan dice "Current"), aunque el menú muestre una prueba de 14 días de Growth: no hay que cambiar de plan ni poner tarjeta. Sin tarjeta, cada cupo del plan es un tope y Cosend no cobra nada.
+2. Conectar el número del local. Empieza en el computador, en el diálogo de Meta que abre Cosend, y se confirma en el celular. No es por "Dispositivos vinculados": ese menú es para WhatsApp Web, y es por donde se conectan las herramientas no oficiales.
+   - **Antes:** la app WhatsApp Business actualizada (versión 2.24.17 o superior) y en uso; el PIN de verificación en dos pasos del número (si nadie lo sabe, se desactiva en WhatsApp Manager), y por si acaso una copia de seguridad de los chats (Ajustes → Chats → Copia de seguridad). Conectar no borra nada del celular.
+   - En el diálogo: entrar con Facebook, elegir o crear el portafolio del negocio, elegir conectar la app WhatsApp Business que ya se usa y poner el número.
+   - En la app **WhatsApp Business** del celular: abrir el mensaje de la cuenta oficial de Facebook Business → "Conectar" → "Conectar a la plataforma".
+   - La app pregunta si se comparte el historial con Cosend ("Confirmar"). Es opcional, se elige una sola vez y los avisos no lo necesitan: es una copia de los chats individuales de los últimos 180 días (fotos y archivos, solo de los últimos 14). Los chats siguen en el celular, también los más viejos.
+   - Escribir el código de verificación que muestra la app en el diálogo del computador. Dejar la app abierta hasta que muestre que el número quedó conectado.
+   - **Qué cambia en el celular:** las listas de difusión que ya existen quedan solo para leer (no se puede enviar por ellas ni crear nuevas); los mensajes temporales, los de "ver una vez" y la ubicación en tiempo real se desactivan en los chats individuales; WhatsApp Web y los demás dispositivos vinculados se desvinculan y se vuelven a vincular con el código QR, menos WhatsApp para Windows, que ya no funciona (en el computador, usar WhatsApp Web). Los grupos y las llamadas siguen igual.
    - No hace falta crear una app en developers.facebook.com: Cosend usa la suya.
 3. Agregar un método de pago en Meta (WhatsApp Manager / centro de facturación): Meta cobra cada aviso directo.
 4. Crear la plantilla `reparacion_lista` (categoría **Utility**), en WhatsApp Manager o en Cosend, y esperar la aprobación:
@@ -194,11 +196,12 @@ Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" 
    ```
 
    `{{1}}` = nombre del cliente y `{{2}}` = marca y modelo. Meta pide un ejemplo de cada una: `Juan` y `Samsung A10`. El mensaje no dice el saldo.
-   - **Idioma:** "Spanish" (código `es`). Si eliges otro, como "Spanish (MEX)", pon su código en `WHATSAPP_IDIOMA` (ej. `es_MX`).
+   - **Idioma:** "Spanish" (código `es`). Si eliges otro, pon su código en `WHATSAPP_IDIOMA`: "Spanish (COL)" es `es_CO` y "Spanish (MEX)" es `es_MX` ([lista de Meta](https://developers.facebook.com/docs/whatsapp/business-management-api/message-templates/supported-languages)).
    - **Tipo de variable:** número (`{{1}}`, `{{2}}`), no con nombre. La plataforma envía los datos en ese orden.
    - **Tienen que ser exactamente 2 variables.** Si la plantilla ya se creó con otra cantidad (antes tenía 3, con el saldo), hay que editarla en WhatsApp Manager: vuelve a revisión. Mientras no coincidan, Meta rechaza cada aviso y la fila dice "La cantidad de datos no coincide con la plantilla aprobada en Meta".
-5. En Cosend → **Developer**:
+5. En Cosend → Configuración → **Desarrollador** (*Developer*):
    - Crear la clave de conexión (`csk_live_…`) y anotar el *Phone number ID* de Meta del número.
+   - Copiar estos datos con el traductor del navegador apagado: puede cambiar palabras dentro de la clave o de los nombres.
    - Webhook: la URL `https://tudominio.com/webhooks/whatsapp`, en el modo en que **Cosend reenvía** los avisos de Meta (no el directo: ese llega firmado con un secreto que solo tiene Cosend). Copiar el *signing secret*.
 6. En el `.env` (en el servidor, agregar estas líneas sin reemplazar el archivo) y correr `php artisan config:cache`:
 
@@ -207,6 +210,7 @@ Cada reparación recibe el aviso **una sola vez**: aunque vuelva a "En proceso" 
    WHATSAPP_TOKEN=csk_live_...            # la clave de conexión
    WHATSAPP_PHONE_NUMBER_ID=...           # el Phone number ID de Meta
    WHATSAPP_APP_SECRET=...                # el signing secret del número
+   WHATSAPP_IDIOMA=es_CO                  # solo si la plantilla está en "Spanish (COL)"
    ```
 
 7. Abrir WhatsApp Business en el celular al menos cada 14 días: si no, la conexión se corta y la fila dice "El número no está conectado en Cosend". Si se acaban los 1.000 mensajes del mes, dice "Se acabaron los 1.000 mensajes gratis del mes en Cosend".

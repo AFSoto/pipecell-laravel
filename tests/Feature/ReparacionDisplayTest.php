@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\Categoria;
 use App\Models\MovimientoStock;
 use App\Models\Notificacion;
+use App\Models\Producto;
 use App\Models\Reparacion;
+use App\Models\TipoProducto;
 use App\Services\ReparacionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -48,6 +51,18 @@ class ReparacionDisplayTest extends TestCase
             'valor_total'      => (int) $reparacion->valor_total,
             'costo_repuestos'  => null,
         ], $cambios);
+    }
+
+    /**
+     * Las pantallas que trae la página para el buscador de display de los modales (la
+     * constante DISPLAYS del script de reparaciones/index), como arreglos.
+     */
+    private function displaysDelBuscador(string $html): array
+    {
+        $this->assertSame(1, preg_match('/const DISPLAYS = (\[.*?\]);\n/s', $html, $datos),
+            'La página no trae los displays del buscador');
+
+        return json_decode($datos[1], true, flags: JSON_THROW_ON_ERROR);
     }
 
     public function test_crear_con_display_descuenta_stock_y_registra_movimiento_sin_tocar_el_costo(): void
@@ -285,12 +300,103 @@ class ReparacionDisplayTest extends TestCase
             'mensaje_id'    => 'wamid.PRUEBA',
         ]);
 
-        $this->actingAs($usuario)
+        $respuesta = $this->actingAs($usuario)
             ->get(route('admin.reparaciones.index', ['estado' => 'todos']))
             ->assertOk()
             ->assertSee('Display: Pantalla Samsung A10 ×1')
-            ->assertSee('Pantalla Samsung A10 — stock 2')
             ->assertSee('data-whatsapp="{&quot;estado&quot;:&quot;enviado&quot;', false);
+
+        // El buscador de los modales ya tiene el stock que quedó
+        $this->assertSame(
+            [['id' => $pantalla->id, 'nombre' => 'Pantalla Samsung A10', 'detalle' => 'Sin marco', 'stock' => 2]],
+            $this->displaysDelBuscador($respuesta->getContent())
+        );
+    }
+
+    public function test_el_buscador_de_display_trae_solo_las_pantallas_activas_con_su_stock(): void
+    {
+        $usuario  = $this->crearUsuario();
+        $activa   = $this->crearPantalla('Pantalla Samsung A10', stock: 4);
+        $sinStock = $this->crearPantalla('Pantalla LG K40', stock: 0);
+        $inactiva = $this->crearPantalla('Pantalla Moto G20');
+        $inactiva->update(['estado' => 'inactivo']);
+
+        $baterias = Categoria::create(['nombre' => 'Repuestos - Baterías', 'estado' => 'activo']);
+        Producto::create([
+            'categoria_id' => $baterias->id, 'nombre' => 'Batería Samsung A10', 'precio_venta' => 30000,
+            'stock'        => 6, 'stock_minimo' => 1, 'estado' => 'activo',
+        ]);
+
+        $html = $this->actingAs($usuario)->get(route('admin.reparaciones.index'))->assertOk()->getContent();
+
+        // Por nombre. La que no tiene stock también llega: la lista la muestra, sin poder elegirla
+        $this->assertSame([
+            ['id' => $sinStock->id, 'nombre' => 'Pantalla LG K40', 'detalle' => 'Sin marco', 'stock' => 0],
+            ['id' => $activa->id, 'nombre' => 'Pantalla Samsung A10', 'detalle' => 'Sin marco', 'stock' => 4],
+        ], $this->displaysDelBuscador($html));
+    }
+
+    public function test_dos_pantallas_con_el_mismo_nombre_se_distinguen_por_el_tipo_y_el_marco(): void
+    {
+        $usuario  = $this->crearUsuario();
+        $original = TipoProducto::create(['nombre' => 'Original']);
+        $conMarco = $this->crearPantalla('Pantalla Samsung A10', stock: 2);
+        $conMarco->update(['marco' => true, 'tipo_producto_id' => $original->id]);
+        $sinMarco = $this->crearPantalla('Pantalla Samsung A10', stock: 3);
+        // De antes de que el marco fuera obligatorio: sin tipo ni marco no hay detalle
+        $sinDatos = $this->crearPantalla('Pantalla Samsung A10', stock: 1);
+        $sinDatos->update(['marco' => null]);
+
+        $html = $this->actingAs($usuario)->get(route('admin.reparaciones.index'))->assertOk()->getContent();
+
+        $this->assertSame([
+            ['id' => $conMarco->id, 'nombre' => 'Pantalla Samsung A10', 'detalle' => 'Original · Con marco', 'stock' => 2],
+            ['id' => $sinMarco->id, 'nombre' => 'Pantalla Samsung A10', 'detalle' => 'Sin marco', 'stock' => 3],
+            ['id' => $sinDatos->id, 'nombre' => 'Pantalla Samsung A10', 'detalle' => '', 'stock' => 1],
+        ], $this->displaysDelBuscador($html));
+    }
+
+    public function test_si_crear_vuelve_con_errores_el_buscador_trae_el_display_elegido(): void
+    {
+        $usuario  = $this->crearUsuario();
+        $pantalla = $this->crearPantalla('Pantalla Samsung A10', stock: 5);
+
+        $this->actingAs($usuario)
+            ->from(route('admin.reparaciones.index'))
+            ->followingRedirects()
+            ->post(route('admin.reparaciones.store'), $this->datosFormulario([
+                'nombre_cliente' => '',   // falta el nombre: vuelve al formulario con errores
+                'usa_display'    => '1',
+                'display_id'     => $pantalla->id,
+            ]))
+            ->assertOk()
+            ->assertSee('id="nueva-buscar-display" value="Pantalla Samsung A10 · Sin marco"', false)
+            ->assertSee('id="nueva-display_id" value="' . $pantalla->id . '"', false);
+
+        $this->assertSame(5, $pantalla->fresh()->stock);
+    }
+
+    public function test_si_el_display_elegido_ya_no_esta_activo_el_buscador_vuelve_vacio(): void
+    {
+        $usuario  = $this->crearUsuario();
+        $pantalla = $this->crearPantalla('Pantalla Samsung A10', stock: 5);
+
+        $this->actingAs($usuario)
+            ->from(route('admin.reparaciones.index'))
+            ->post(route('admin.reparaciones.store'), $this->datosFormulario([
+                'nombre_cliente' => '',
+                'usa_display'    => '1',
+                'display_id'     => $pantalla->id,
+            ]))
+            ->assertSessionHasErrors('nombre_cliente');
+
+        // Mientras volvía el formulario, otra persona lo desactivó
+        $pantalla->update(['estado' => 'inactivo']);
+
+        $this->get(route('admin.reparaciones.index'))
+            ->assertOk()
+            ->assertSee('id="nueva-buscar-display" value=""', false)
+            ->assertSee('id="nueva-display_id" value=""', false);
     }
 
     public function test_editar_devuelve_la_descripcion_recortada_y_el_stock_de_todos_los_displays(): void

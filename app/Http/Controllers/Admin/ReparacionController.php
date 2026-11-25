@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection as SupportCollection;
 
 /**
  * Controlador de Reparaciones.
@@ -121,11 +122,9 @@ class ReparacionController extends Controller
         // Cajas disponibles para el formulario de nueva reparación
         $cajasLibres = $this->cajasLibres();
 
-        // Displays (pantallas activas) para el campo "¿Se usó display?"
+        // Displays (pantallas activas) para el buscador del campo "¿Se usó display?"
         // de los modales de crear y editar
-        $displays = $this->consultaDisplays()
-            ->orderBy('nombre')
-            ->get(['id', 'nombre', 'stock']);
+        $displays = $this->displaysParaElBuscador();
 
         // Los filtros ya revisados: la vista los muestra tal cual (no lee request())
         $filtros = compact('estado', 'periodo', 'desde', 'hasta', 'buscar', 'buscando');
@@ -383,6 +382,28 @@ class ReparacionController extends Controller
     private function consultaDisplays(): Builder
     {
         return Producto::activos()->pantallas();
+    }
+
+    /**
+     * Las pantallas activas para el buscador de display de los modales (partials/campo-display),
+     * por nombre: {id, nombre, detalle, stock}. El detalle (tipo y marco) distingue dos con el
+     * mismo nombre, como una «Pantalla Samsung A10» con marco y otra sin marco. Las que no
+     * tienen stock también van: la lista las muestra sin dejarlas elegir.
+     */
+    private function displaysParaElBuscador(): SupportCollection
+    {
+        return $this->consultaDisplays()
+            ->with('tipoProducto:id,nombre')
+            ->orderBy('nombre')
+            ->orderBy('id')
+            ->get(['id', 'nombre', 'stock', 'marco', 'tipo_producto_id'])
+            ->map(fn (Producto $display) => [
+                'id'      => $display->id,
+                'nombre'  => $display->nombre,
+                'detalle' => $display->detalleDePantalla(),
+                'stock'   => (int) $display->stock,
+            ])
+            ->toBase();
     }
 
     /**

@@ -1,10 +1,10 @@
-// Pruebas de navegador de la búsqueda en vivo (Productos y Reparaciones), del filtro de periodo y
-// del aviso por WhatsApp, en WebKit (el motor de Safari, el del iPad) y en Chromium, contra la app
-// con una base SQLite temporal: nunca toca MySQL ni Meta. Ver README.md.
+// Pruebas de navegador de la búsqueda en vivo (Productos y Reparaciones), del filtro de periodo,
+// del aviso por WhatsApp y del buscador de display, en WebKit (el motor de Safari, el del iPad) y
+// en Chromium, contra la app con una base SQLite temporal: nunca toca MySQL ni Meta. Ver README.md.
 //
 //   npm run e2e                          todas, en WebKit y Chromium
 //   npm run e2e -- --motor webkit        un solo motor
-//   npm run e2e -- --solo reparaciones   una sola prueba (productos, reparaciones, periodo, carga-lenta o whatsapp)
+//   npm run e2e -- --solo reparaciones   una sola prueba (productos, reparaciones, periodo, carga-lenta, whatsapp o display)
 //   npm run e2e -- --capturas <carpeta>  además guarda capturas
 //   npm run e2e:rendimiento              3.000 reparaciones: lo que pesa y tarda una búsqueda
 import { spawn, execFileSync } from 'node:child_process';
@@ -21,6 +21,7 @@ import * as periodo from './periodo.mjs';
 import * as cargaLenta from './carga-lenta.mjs';
 import * as rendimiento from './rendimiento.mjs';
 import * as whatsapp from './whatsapp.mjs';
+import * as display from './display.mjs';
 
 const RAIZ    = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const MOTORES = { webkit, chromium };
@@ -36,8 +37,9 @@ const opcion      = nombre => { const i = args.indexOf(nombre); return i === -1 
 const esRendimiento = args.includes('--rendimiento');
 const motores     = opcion('--motor') ? [opcion('--motor')] : (esRendimiento ? ['webkit'] : ['webkit', 'chromium']);
 const capturas    = opcion('--capturas') ? resolve(opcion('--capturas')) : null;
-// whatsapp va al final: pasa reparaciones a «Arreglado»
-const TODAS       = { productos, reparaciones, periodo, 'carga-lenta': cargaLenta, whatsapp };
+// whatsapp y display van al final: whatsapp pasa reparaciones a «Arreglado», y display agrega
+// pantallas, crea una reparación y cambia stock
+const TODAS       = { productos, reparaciones, periodo, 'carga-lenta': cargaLenta, whatsapp, display };
 const solo        = opcion('--solo');
 const suites      = esRendimiento ? [rendimiento] : (solo ? [TODAS[solo]] : Object.values(TODAS));
 
@@ -137,11 +139,15 @@ for (const motor of motores) {
     const cambiar = (cliente, campo, valor) => execFileSync('php', [join(RAIZ, 'tests/e2e/cambiar.php'), cliente, campo, valor],
         { env: entornoPara(base), encoding: 'utf8' }).trim();
 
+    // Las pantallas de la prueba del buscador de display (tests/e2e/pantallas.php)
+    const pantallas = (...argumentos) => execFileSync('php', [join(RAIZ, 'tests/e2e/pantallas.php'), ...argumentos],
+        { env: entornoPara(base), encoding: 'utf8' }).trim();
+
     try {
         for (const suite of suites) {
             console.log(`\n── ${suite.titulo} · ${motor} ──`);
             try {
-                await suite.correr({ navegador, app, revisar: revisor.revisar, cambiar, capturas, motor, meta });
+                await suite.correr({ navegador, app, revisar: revisor.revisar, cambiar, pantallas, capturas, motor, meta });
             } catch (error) {
                 revisor.revisar(false, `${suite.titulo}: la prueba se cortó`, error.message.split('\n')[0]);
             }

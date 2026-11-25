@@ -32,5 +32,16 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- WhatsApp sin configurar en las pruebas, aunque el .env de quien las corre tenga la
+             clave de verdad (Cosend): si no, las que pasan a "Arreglado" le escribían de verdad
+             al cliente de prueba. Las pruebas que envían lo configuran y simulan la API -->
+        <env name="WHATSAPP_API_URL" value="https://graph.facebook.com" force="true"/>
+        <env name="WHATSAPP_TOKEN" value="" force="true"/>
+        <env name="WHATSAPP_PHONE_NUMBER_ID" value="" force="true"/>
+        <env name="WHATSAPP_API_VERSION" value="v26.0" force="true"/>
+        <env name="WHATSAPP_PLANTILLA_LISTA" value="reparacion_lista" force="true"/>
+        <env name="WHATSAPP_IDIOMA" value="es" force="true"/>
+        <env name="WHATSAPP_VERIFY_TOKEN" value="" force="true"/>
+        <env name="WHATSAPP_APP_SECRET" value="" force="true"/>
     </php>
 </phpunit>

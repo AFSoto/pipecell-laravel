@@ -4,12 +4,18 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 abstract class TestCase extends BaseTestCase
 {
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Ninguna prueba sale a Internet: un pedido sin Http::fake() falla. Es la segunda
+        // barrera (la primera, las WHATSAPP_* de phpunit.xml): una clave de verdad en el .env
+        // nunca le escribe a nadie desde las pruebas
+        Http::preventStrayRequests();
 
         $this->agregarFuncionesDeMysqlASqlite();
     }

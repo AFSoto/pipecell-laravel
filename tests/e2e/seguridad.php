@@ -3,7 +3,7 @@
 /**
  * Las pruebas de navegador borran y llenan su base: estas revisiones impiden que eso pase
  * con otra que no sea la SQLite temporal que creó correr.mjs (nunca MySQL, nunca
- * database/database.sqlite). Las usan preparar-base.php y cambiar.php.
+ * database/database.sqlite). Las usan preparar-base.php, cambiar.php y pantallas.php.
  */
 
 /** La ruta de la base temporal (DB_DATABASE), o aborta si no es una de las pruebas. */

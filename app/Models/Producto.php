@@ -198,6 +198,25 @@ class Producto extends Model
     }
 
     /**
+     * Lo que distingue a una pantalla de otra con el mismo nombre: el tipo y el marco, con
+     * las mismas palabras de las etiquetas (productos/partials/etiquetas). Lo muestra el
+     * buscador de display de Reparaciones. Vacío si no tiene ninguno de los dos.
+     * Usa el tipo: en listas, cargarlo con with('tipoProducto').
+     * Ejemplo: $producto->detalleDePantalla() → "Original · Con marco"
+     */
+    public function detalleDePantalla(): string
+    {
+        return implode(' · ', array_filter([
+            $this->tipoProducto?->nombre,
+            match ($this->marco) {
+                true    => 'Con marco',
+                false   => 'Sin marco',
+                default => null,
+            },
+        ]));
+    }
+
+    /**
      * Verifica si hay suficiente stock para atender una cantidad solicitada.
      *
      * @param int $cantidad Unidades requeridas (default 1)

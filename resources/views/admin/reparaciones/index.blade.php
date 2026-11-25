@@ -1550,87 +1550,329 @@ function actualizarFilaEdicion(datos) {
     // DISPLAY USADO (modales crear / editar)
     // ══════════════════════════════════════
     /**
-     * Opciones de cada select de displays ('nueva' y 'edit'), guardadas al cargar la página.
-     * El buscador reconstruye el select desde aquí en vez de ocultar opciones con
-     * "hidden", que Safari de iPhone/iPad ignora en la lista nativa.
-     *   vacia:    la opción "Seleccionar display..."
-     *   base:     las pantallas activas que mandó el servidor
-     *   temporal: el display inactivo de la reparación que se está editando (o null)
+     * Las pantallas activas que mandó el servidor, las mismas para los dos modales:
+     * {id, nombre, detalle, stock}. El detalle (tipo y marco) distingue dos con el mismo
+     * nombre. El stock se pone al día después de editar (actualizarStocksDisplays).
      */
-    const OPCIONES_DISPLAY = {};
+    const DISPLAYS = @json($displays);
 
-    document.querySelectorAll('select.select-display').forEach(select => {
-        OPCIONES_DISPLAY[select.id.replace('-display_id', '')] = {
-            vacia:    select.options[0],
-            base:     Array.from(select.options).filter(opcion => opcion.value),
-            temporal: null,
+    /** Cuántos muestra la lista. Si hay más, la última línea pide seguir escribiendo. */
+    const MAXIMO_EN_LISTA_DISPLAYS = 50;
+
+    /**
+     * El buscador del campo "Display" de cada modal ('nueva' y 'edit'): sus elementos
+     * (partials/campo-display) y su estado.
+     *   elegido:   el display que va en el oculto display_id (de DISPLAYS, o el temporal), o null
+     *   propio:    id del display que ya tiene la reparación que se edita: se puede elegir
+     *              aunque su stock esté en 0, porque esas unidades ya son de ella
+     *   temporal:  ese display si ya no está activo, como "(inactivo)" solo para esta reparación
+     *   visibles:  los que muestra la lista ahora
+     *   resaltado: posición en visibles del que elige Enter (-1: ninguno)
+     *   abierto:   la lista está a la vista
+     *
+     * Con el foco, el campo es para buscar: queda vacío y el elegido se ve de guía, en gris.
+     * Al salir, muestra el elegido. Así lo que se escribe nunca se pega al nombre (en el iPad,
+     * seleccionar el texto al entrar no es confiable).
+     */
+    const BUSCADORES_DISPLAY = {};
+
+    /** Minúsculas y sin tildes, para comparar ("Genérico" → "generico"): NFD separa la tilde y \p{M} la quita. */
+    const normalizarParaBuscar = texto => texto.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+    /** Lo que muestra el campo con un display elegido. Es el mismo $textoOld de campo-display. */
+    const textoDelDisplay = display => display.detalle ? `${display.nombre} · ${display.detalle}` : display.nombre;
+
+    const mismoId = (a, b) => a != null && b != null && String(a) === String(b);
+
+    /** Se puede elegir si tiene stock, o si es el que ya tiene la reparación que se edita. */
+    const sePuedeElegirDisplay = (buscador, display) => display.stock > 0 || mismoId(display.id, buscador.propio);
+
+    /** Donde se busca cada display: nombre y detalle, normalizados una sola vez. */
+    const TEXTO_PARA_BUSCAR_DISPLAY = new WeakMap();
+
+    function textoParaBuscarDisplay(display) {
+        if (!TEXTO_PARA_BUSCAR_DISPLAY.has(display)) {
+            TEXTO_PARA_BUSCAR_DISPLAY.set(display, normalizarParaBuscar(`${display.nombre} ${display.detalle}`));
+        }
+
+        return TEXTO_PARA_BUSCAR_DISPLAY.get(display);
+    }
+
+    document.querySelectorAll('[data-buscador-display]').forEach(iniciarBuscadorDisplay);
+
+    // En el iPad, tocar fuera del campo no siempre le quita el foco: se lo quita esto, así la
+    // lista se cierra y el teclado se va
+    document.addEventListener('pointerdown', evento => {
+        Object.values(BUSCADORES_DISPLAY).forEach(buscador => {
+            if (document.activeElement === buscador.campo && !buscador.contenedor.contains(evento.target)) {
+                buscador.campo.blur();
+            }
+        });
+    }, true);
+
+    function iniciarBuscadorDisplay(contenedor) {
+        const prefijo = contenedor.dataset.buscadorDisplay;
+        const campo   = document.getElementById(`${prefijo}-buscar-display`);
+        const oculto  = document.getElementById(`${prefijo}-display_id`);
+
+        const buscador = BUSCADORES_DISPLAY[prefijo] = {
+            prefijo, contenedor, campo, oculto,
+            desplegable: document.getElementById(`${prefijo}-desplegable-display`),
+            lista:       document.getElementById(`${prefijo}-lista-displays`),
+            aviso:       document.getElementById(`${prefijo}-aviso-displays`),
+            ayuda:       campo.placeholder,
+            // El que dejó el servidor: después de un error al crear vuelve el elegido
+            elegido:     DISPLAYS.find(display => mismoId(display.id, oculto.value)) ?? null,
+            propio:      null,
+            temporal:    null,
+            visibles:    [],
+            resaltado:   -1,
+            abierto:     false,
         };
-    });
 
-    function toggleDisplay(prefijo) {
-        const marcado = document.getElementById(`${prefijo}-usa_display`).checked;
-        document.getElementById(`${prefijo}-seccion-display`).classList.toggle('hidden', !marcado);
+        campo.addEventListener('focus', () => {
+            campo.placeholder = buscador.elegido ? textoDelDisplay(buscador.elegido) : buscador.ayuda;
+            campo.value       = '';
+            abrirListaDisplays(buscador);
+        });
+        // Con el foco ya puesto (después de Escape), tocar el campo vuelve a abrir la lista
+        campo.addEventListener('click', () => { if (!buscador.abierto) abrirListaDisplays(buscador); });
+        campo.addEventListener('input', () => abrirListaDisplays(buscador));
+        campo.addEventListener('keydown', evento => teclaEnBuscadorDisplay(buscador, evento));
+        campo.addEventListener('blur', () => salirDelBuscadorDisplay(buscador));
+
+        // Tocar la lista no le quita el foco al campo: si no, se cerraría antes del click. Se
+        // elige en el click, así deslizar la lista con el dedo para verla no elige nada
+        buscador.desplegable.addEventListener('mousedown', evento => evento.preventDefault());
+        buscador.lista.addEventListener('click', evento => {
+            const opcion  = evento.target.closest('[role="option"]');
+            const display = opcion ? buscador.visibles[Number(opcion.dataset.indice)] : null;
+
+            if (display && sePuedeElegirDisplay(buscador, display)) elegirDisplay(buscador, display);
+        });
+    }
+
+    /** Muestra la lista con lo que coincide con el campo (y la pinta de nuevo si ya estaba). */
+    function abrirListaDisplays(buscador) {
+        const yaEstaba = buscador.abierto;
+
+        buscador.abierto = true;
+        buscador.desplegable.classList.remove('hidden');
+        buscador.campo.setAttribute('aria-expanded', 'true');
+        pintarListaDisplays(buscador);
+
+        // Que la lista quede a la vista dentro del modal
+        if (!yaEstaba) buscador.desplegable.scrollIntoView({ block: 'nearest' });
+    }
+
+    function cerrarListaDisplays(buscador) {
+        buscador.abierto = false;
+        buscador.desplegable.classList.add('hidden');
+        buscador.campo.setAttribute('aria-expanded', 'false');
+        buscador.campo.removeAttribute('aria-activedescendant');
+    }
+
+    /** Al salir del campo: se cierra la lista y el campo muestra el elegido (o nada). */
+    function salirDelBuscadorDisplay(buscador) {
+        cerrarListaDisplays(buscador);
+        buscador.campo.value       = buscador.elegido ? textoDelDisplay(buscador.elegido) : '';
+        buscador.campo.placeholder = buscador.ayuda;
+    }
+
+    /** Lo elige y sale del campo (en el iPad, eso cierra el teclado, como una lista normal). */
+    function elegirDisplay(buscador, display) {
+        buscador.elegido      = display;
+        buscador.oculto.value = display.id;
+        buscador.campo.blur();
+        salirDelBuscadorDisplay(buscador);
     }
 
     /**
-     * Deja en el select solo los displays que coinciden con el texto del buscador.
-     * El que está elegido siempre se queda, para no perder la elección al buscar.
+     * Todas las palabras del campo, en cualquier orden, sin importar mayúsculas ni tildes:
+     * «a10 samsung» encuentra «Pantalla Samsung A10». Muestra hasta MAXIMO_EN_LISTA_DISPLAYS.
      */
-    function filtrarDisplays(prefijo, texto) {
-        const select   = document.getElementById(`${prefijo}-display_id`);
-        const opciones = OPCIONES_DISPLAY[prefijo];
-        const busqueda = texto.trim().toLowerCase();
-        const elegido  = select.value;
+    function pintarListaDisplays(buscador) {
+        const texto     = buscador.campo.value.trim();
+        const palabras  = normalizarParaBuscar(texto).split(/\s+/).filter(Boolean);
+        const todos     = buscador.temporal ? [buscador.temporal, ...DISPLAYS] : DISPLAYS;
+        const coinciden = todos.filter(display => palabras.every(palabra => textoParaBuscarDisplay(display).includes(palabra)));
 
-        const visibles = [opciones.temporal, ...opciones.base].filter(opcion =>
-            opcion && (busqueda === '' || opcion.value === elegido || opcion.text.toLowerCase().includes(busqueda))
-        );
+        buscador.visibles = coinciden.slice(0, MAXIMO_EN_LISTA_DISPLAYS);
+        buscador.lista.replaceChildren(...buscador.visibles.map((display, indice) => opcionDisplay(buscador, display, indice)));
+        buscador.lista.classList.toggle('hidden', coinciden.length === 0);
 
-        select.replaceChildren(opciones.vacia, ...visibles);
-        select.value = elegido;
+        const restantes = coinciden.length - buscador.visibles.length;
+        const aviso     = coinciden.length === 0
+            ? (texto ? `Ningún display coincide con «${texto}».` : 'No hay pantallas activas en el inventario.')
+            : (restantes > 0 ? `Y ${restantes} más: escribe la marca o el modelo.` : '');
+
+        buscador.aviso.textContent = aviso;
+        buscador.aviso.classList.toggle('hidden', aviso === '');
+
+        // Lo que elige Enter: con texto, el primero que se puede elegir; sin texto, el elegido
+        resaltarDisplay(buscador, texto
+            ? buscador.visibles.findIndex(display => sePuedeElegirDisplay(buscador, display))
+            : buscador.visibles.findIndex(display => mismoId(display.id, buscador.elegido?.id)));
     }
 
-    /**
-     * Carga en el modal de edición el display que tiene la reparación.
-     * Si ese display ya no está activo, entra como opción temporal "(inactivo)" solo
-     * para esta reparación: al abrir otra, se descarta. El display de la reparación se
-     * habilita aunque su stock esté en 0, porque esas unidades ya son de ella.
-     */
-    function prepararDisplayEdicion(datos) {
-        const opciones = OPCIONES_DISPLAY.edit;
-        const idActual = datos.display_id ? String(datos.display_id) : '';
+    /** Una fila de la lista: nombre, detalle y stock. Con textContent: un nombre con < o comillas no rompe nada. */
+    function opcionDisplay(buscador, display, indice) {
+        const opcion  = document.createElement('li');
+        const elegido = mismoId(display.id, buscador.elegido?.id);
+        const sePuede = sePuedeElegirDisplay(buscador, display);
 
-        opciones.base.forEach(opcion => {
-            opcion.disabled = opcion.value !== idActual && (parseInt(opcion.dataset.stock) || 0) < 1;
+        opcion.id = `${buscador.prefijo}-display-${display.id}`;
+        opcion.dataset.indice = indice;
+        opcion.setAttribute('role', 'option');
+        opcion.setAttribute('aria-selected', elegido ? 'true' : 'false');
+        if (!sePuede) opcion.setAttribute('aria-disabled', 'true');
+        opcion.className = 'flex items-center justify-between gap-3 px-3 py-2 text-sm select-none '
+            + (sePuede ? 'cursor-pointer hover:bg-gray-50' : 'cursor-not-allowed opacity-50');
+
+        const textos = document.createElement('span');
+        textos.className = 'min-w-0';
+
+        const nombre = document.createElement('span');
+        nombre.className   = 'block truncate ' + (elegido ? 'font-semibold text-blue-700' : 'font-medium text-gray-800');
+        nombre.textContent = display.nombre;
+        textos.appendChild(nombre);
+
+        if (display.detalle) {
+            const detalle = document.createElement('span');
+            detalle.className   = 'block truncate text-xs text-gray-500';
+            detalle.textContent = display.detalle;
+            textos.appendChild(detalle);
+        }
+
+        // El temporal (inactivo) no trae stock: sus unidades ya son de la reparación
+        const stock = document.createElement('span');
+        stock.className   = 'shrink-0 text-xs ' + (sePuede ? 'text-gray-500' : 'font-medium text-red-600');
+        stock.textContent = display.stock === null ? '' : (sePuede ? `stock ${display.stock}` : 'sin stock');
+
+        opcion.append(textos, stock);
+
+        return opcion;
+    }
+
+    /** Marca la fila que elige Enter (indice -1: ninguna) y la deja a la vista. */
+    function resaltarDisplay(buscador, indice) {
+        buscador.resaltado = indice;
+
+        buscador.lista.querySelectorAll('[role="option"]').forEach(opcion => {
+            opcion.classList.toggle('bg-blue-50', Number(opcion.dataset.indice) === indice);
         });
 
-        opciones.temporal = idActual && !opciones.base.some(opcion => opcion.value === idActual)
-            ? new Option(`${datos.display_nombre} (inactivo)`, idActual)
-            : null;
+        const opcion = indice >= 0 ? buscador.lista.querySelector(`[data-indice="${indice}"]`) : null;
 
-        document.getElementById('edit-usa_display').checked  = !!idActual;
-        document.getElementById('edit-buscar-display').value = '';
-        filtrarDisplays('edit', '');
-        document.getElementById('edit-display_id').value       = idActual;
-        document.getElementById('edit-display_cantidad').value = datos.display_cantidad || 1;
+        if (opcion) {
+            buscador.campo.setAttribute('aria-activedescendant', opcion.id);
+            opcion.scrollIntoView({ block: 'nearest' });
+        } else {
+            buscador.campo.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    /** ↑/↓ recorren los que se pueden elegir; en la primera o la última, se queda ahí. */
+    function moverResaltadoDisplay(buscador, paso) {
+        for (let indice = buscador.resaltado + paso; indice >= 0 && indice < buscador.visibles.length; indice += paso) {
+            if (sePuedeElegirDisplay(buscador, buscador.visibles[indice])) {
+                resaltarDisplay(buscador, indice);
+                return;
+            }
+        }
+    }
+
+    /**
+     * ↑/↓ recorren la lista, Enter elige el resaltado y Escape cierra la lista y borra lo
+     * escrito. Enter nunca guarda la reparación desde aquí.
+     */
+    function teclaEnBuscadorDisplay(buscador, evento) {
+        if (evento.isComposing) return;
+
+        switch (evento.key) {
+            case 'ArrowDown':
+            case 'ArrowUp':
+                evento.preventDefault();
+                if (!buscador.abierto) {
+                    abrirListaDisplays(buscador);
+                } else {
+                    moverResaltadoDisplay(buscador, evento.key === 'ArrowDown' ? 1 : -1);
+                }
+                break;
+
+            case 'Enter':
+                evento.preventDefault();
+                if (buscador.abierto && buscador.resaltado >= 0) {
+                    elegirDisplay(buscador, buscador.visibles[buscador.resaltado]);
+                }
+                break;
+
+            case 'Escape':
+                if (buscador.abierto || buscador.campo.value) {
+                    evento.preventDefault();
+                    cerrarListaDisplays(buscador);
+                    buscador.campo.value = '';
+                }
+                break;
+        }
+    }
+
+    /**
+     * Muestra u oculta el campo según «¿Se usó display?». Al marcarla con la mano (enfocar),
+     * el cursor queda en el buscador, con la lista abierta.
+     */
+    function toggleDisplay(prefijo, enfocar = false) {
+        const marcado  = document.getElementById(`${prefijo}-usa_display`).checked;
+        const buscador = BUSCADORES_DISPLAY[prefijo];
+
+        document.getElementById(`${prefijo}-seccion-display`).classList.toggle('hidden', !marcado);
+
+        if (!buscador) return;
+
+        if (!marcado) {
+            buscador.campo.blur();
+            salirDelBuscadorDisplay(buscador);
+        } else if (enfocar) {
+            buscador.campo.focus();
+        }
+    }
+
+    /**
+     * Carga en el modal de edición el display que tiene la reparación. Se puede elegir aunque
+     * su stock esté en 0 (propio). Si ya no está activo, entra como "(inactivo)" solo para
+     * esta reparación: al abrir otra, se descarta.
+     */
+    function prepararDisplayEdicion(datos) {
+        const buscador = BUSCADORES_DISPLAY.edit;
+        const idActual = datos.display_id ? String(datos.display_id) : '';
+        const activo   = DISPLAYS.find(display => mismoId(display.id, idActual)) ?? null;
+
+        buscador.propio   = idActual || null;
+        buscador.temporal = idActual && !activo
+            ? { id: datos.display_id, nombre: `${datos.display_nombre ?? 'Display'} (inactivo)`, detalle: '', stock: null }
+            : null;
+        buscador.elegido      = activo ?? buscador.temporal;
+        buscador.oculto.value = idActual;
+
+        document.getElementById('edit-usa_display').checked       = !!idActual;
+        document.getElementById('edit-display_cantidad').value     = datos.display_cantidad || 1;
+        salirDelBuscadorDisplay(buscador);
         toggleDisplay('edit');
     }
 
     /**
-     * Refresca el stock que muestran los selects de displays después de editar.
-     * stocks = { productoId: stock, ... } con todas las pantallas activas. Se actualiza
-     * la lista guardada, así también quedan al día las opciones que el buscador sacó.
+     * Pone al día el stock de los displays después de editar: stocks = { productoId: stock }
+     * con todas las pantallas activas. Si una lista está abierta, se vuelve a pintar.
      */
     function actualizarStocksDisplays(stocks) {
-        Object.values(OPCIONES_DISPLAY).forEach(({ base }) => {
-            base.forEach(opcion => {
-                if (!stocks || !(opcion.value in stocks)) return;
+        if (!stocks) return;
 
-                const stock = parseInt(stocks[opcion.value]) || 0;
-                opcion.dataset.stock = stock;
-                opcion.disabled      = stock < 1;
-                opcion.textContent   = `${opcion.dataset.nombre} — stock ${stock}`;
-            });
+        DISPLAYS.forEach(display => {
+            if (display.id in stocks) display.stock = parseInt(stocks[display.id]) || 0;
+        });
+
+        Object.values(BUSCADORES_DISPLAY).forEach(buscador => {
+            if (buscador.abierto) pintarListaDisplays(buscador);
         });
     }
 
